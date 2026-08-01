@@ -65,14 +65,15 @@ export interface ShopState {
   rackInventory: ComponentId[]
 }
 
-export type VisitorPhase = 'watching' | 'deciding' | 'leaving'
+export type OrderKind = 'demand' | 'display'
 
-export interface VisitorState {
+export interface Order {
   id: string
-  phase: VisitorPhase
+  speciesId: string
+  qty: number
+  unitPrice: number
   timeLeft: number
-  targetTankId: string | null
-  targetFishId: string | null
+  kind: OrderKind
 }
 
 export type LogKind = 'buy' | 'sell' | 'info' | 'warn' | 'money'
@@ -87,12 +88,13 @@ export interface GameState {
   money: number
   shop: ShopState
   tanks: TankState[]
+  market: Record<string, number>
+  orders: Order[]
   selectedTankId: string | null
   selectedStorageId: string | null
   day: number
   daySeconds: number
   log: LogEntry[]
-  visitors: VisitorState[]
   nextVisitorIn: number
   totalVisitors: number
   sales: number

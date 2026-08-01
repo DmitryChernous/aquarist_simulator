@@ -1,18 +1,32 @@
-import type { FishInstance, FishSpecies, GameState } from '../types'
+import type { FishSpecies, GameState } from '../types'
 
 const DAILY_RENT = 50
 
-export function fishSellValue(fish: FishInstance, species: FishSpecies): number {
-  const healthFactor = 0.5 + fish.health / 200
-  return Math.round(species.sellPrice * healthFactor)
+export function retailPrice(species: FishSpecies, factor: number): number {
+  return Math.round(species.sellPrice * factor)
 }
 
-export function wholesalePrice(species: FishSpecies): number {
-  return Math.round(species.sellPrice * 0.6)
+export function buyPrice(species: FishSpecies, factor: number): number {
+  return Math.round(species.buyPrice * factor)
+}
+
+export function wholesalePrice(species: FishSpecies, factor: number): number {
+  return Math.round(species.sellPrice * factor * 0.6)
 }
 
 export function stockTotal(stock: { speciesId: string; count: number }[]): number {
   return stock.reduce((acc, s) => acc + s.count, 0)
+}
+
+export function availableStock(state: GameState, speciesId: string): number {
+  let n = 0
+  for (const tank of state.tanks) {
+    if (tank.kind !== 'storage') continue
+    for (const item of tank.stock) {
+      if (item.speciesId === speciesId) n += item.count
+    }
+  }
+  return n
 }
 
 export function dailyUpkeep(state: GameState, speciesById: Record<string, FishSpecies>): number {

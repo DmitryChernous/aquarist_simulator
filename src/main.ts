@@ -11,13 +11,12 @@ import {
   rackCapacity,
 } from './data/shop'
 import { totalRequiredVolume, updateHealth } from './sim/health'
-import { dailyUpkeep, fishSellValue, wholesalePrice } from './sim/economy'
+import { availableStock, buyPrice, dailyUpkeep, wholesalePrice } from './sim/economy'
 import {
   arrivalInterval,
-  conversionChance,
-  pickTargetFish,
+  generateOrder,
   shopAttractiveness,
-  tankAttractiveness,
+  updateMarket,
 } from './sim/buyers'
 import { clearSave, loadState, saveState } from './save'
 import { renderTank } from './ui/render'
@@ -27,7 +26,6 @@ import type { ComponentId, FishInstance, FishSpecies, GameState, LogKind, TankKi
 const DAY_SECONDS = 30
 const TANK = { width: 960, height: 420 }
 const LOG_LIMIT = 40
-const MAX_VISITORS = 8
 
 let state: GameState = loadState()
 
@@ -165,13 +163,14 @@ const ui = buildApp({
     const storage = tankById(storageTankId)
     if (!storage) return
     const species = SPECIES_BY_ID[speciesId]
-    if (state.money < species.buyPrice) {
+    const price = buyPrice(species, state.market[speciesId] ?? 1)
+    if (state.money < price) {
       ui.flash('Не хватает денег!')
       return
     }
-    state.money -= species.buyPrice
+    state.money -= price
     addStock(storage, speciesId, 1)
-    pushLog(`Куплена ${species.name} за ${species.buyPrice}₽ на склад`, 'buy')
+    pushLog(`Куплена ${species.name} за ${price}₽ на склад`, 'buy')
     bump()
   },
   onWholesaleSell(speciesId, storageTankId) {
@@ -180,44 +179,31 @@ const ui = buildApp({
     const item = storage.stock.find((s) => s.speciesId === speciesId)
     if (!item || item.count <= 0) return
     const species = SPECIES_BY_ID[speciesId]
-    const revenue = wholesalePrice(species) * item.count
+    const revenue = wholesalePrice(species, state.market[speciesId] ?? 1) * item.count
     state.money += revenue
+    state.sales += item.count
     storage.stock = storage.stock.filter((s) => s.speciesId !== speciesId)
     pushLog(`Оптовая продажа ${item.count} × ${species.name} за ${revenue}₽`, 'sell')
     bump()
   },
-  onStockToDisplay(speciesId, storageTankId, displayTankId, count) {
-    const storage = tankById(storageTankId)
+  onStockToDisplay(speciesId, displayTankId, count) {
     const display = tankById(displayTankId)
-    if (!storage || !display || display.kind !== 'display') return
-    const item = storage.stock.find((s) => s.speciesId === speciesId)
-    if (!item || item.count <= 0) return
+    if (!display || display.kind !== 'display') return
     const species = SPECIES_BY_ID[speciesId]
     const currentReq = totalRequiredVolume(display.fish, SPECIES_BY_ID)
     const space = Math.floor((display.volume - currentReq) / species.minVolume)
-    const n = Math.min(count, item.count, Math.max(0, space))
-    if (n <= 0) {
+    const want = Math.min(count, space)
+    if (want <= 0) {
       ui.flash('Нет места в витрине!')
       return
     }
-    for (let i = 0; i < n; i++) display.fish.push(createFish(species))
-    item.count -= n
-    if (item.count <= 0) storage.stock = storage.stock.filter((s) => s.speciesId !== speciesId)
-    pushLog(`Заселено ${n} × ${species.name} в «${display.name}»`, 'info')
-    bump()
-  },
-  onSellDisplayFish(tankId, fishId) {
-    const tank = tankById(tankId)
-    if (!tank) return
-    const idx = tank.fish.findIndex((f) => f.id === fishId)
-    if (idx < 0) return
-    const fish = tank.fish[idx]
-    const species = SPECIES_BY_ID[fish.speciesId]
-    const value = fishSellValue(fish, species)
-    state.money += value
-    state.sales += 1
-    tank.fish.splice(idx, 1)
-    pushLog(`Продана ${species.name} за ${value}₽`, 'sell')
+    const taken = takeStock(speciesId, want)
+    if (taken <= 0) {
+      ui.flash('Нет рыб на складе!')
+      return
+    }
+    for (let i = 0; i < taken; i++) display.fish.push(createFish(species))
+    pushLog(`Заселено ${taken} × ${species.name} в «${display.name}»`, 'info')
     bump()
   },
   onMoveDisplayToStorage(tankId, fishId) {
@@ -229,8 +215,24 @@ const ui = buildApp({
     const storage = tankById(state.selectedStorageId) ?? storageTanks(state)[0]
     if (storage) {
       addStock(storage, fish.speciesId, 1)
-      pushLog(`${SPECIES_BY_ID[fish.speciesId].name} убрана со витрины в склад`, 'info')
+      pushLog(`${SPECIES_BY_ID[fish.speciesId].name} убрана с витрины в склад`, 'info')
     }
+    bump()
+  },
+  onFulfillOrder(orderId) {
+    const idx = state.orders.findIndex((o) => o.id === orderId)
+    if (idx < 0) return
+    const order = state.orders[idx]
+    if (availableStock(state, order.speciesId) < order.qty) {
+      ui.flash('Не хватает рыб на складе!')
+      return
+    }
+    takeStock(order.speciesId, order.qty)
+    const revenue = order.unitPrice * order.qty
+    state.money += revenue
+    state.sales += order.qty
+    state.orders.splice(idx, 1)
+    pushLog(`Продано ${order.qty} × ${SPECIES_BY_ID[order.speciesId].name} за ${revenue}₽`, 'sell')
     bump()
   },
   onReset() {
@@ -259,6 +261,20 @@ function addStock(tank: TankState, speciesId: string, count: number): void {
   const item = tank.stock.find((s) => s.speciesId === speciesId)
   if (item) item.count += count
   else tank.stock.push({ speciesId, count })
+}
+
+function takeStock(speciesId: string, n: number): number {
+  let need = n
+  for (const tank of storageTanks(state)) {
+    if (need <= 0) break
+    const item = tank.stock.find((s) => s.speciesId === speciesId)
+    if (!item || item.count <= 0) continue
+    const take = Math.min(item.count, need)
+    item.count -= take
+    need -= take
+    if (item.count <= 0) tank.stock = tank.stock.filter((s) => s.speciesId !== speciesId)
+  }
+  return n - need
 }
 
 function createFish(species: FishSpecies): FishInstance {
@@ -335,84 +351,42 @@ function updateFish(dt: number): void {
 }
 
 function tryArrive(): void {
-  const hasFish = state.tanks.some(
-    (t) => t.kind === 'display' && t.fish.some((f) => f.health >= 15),
+  const hasAnything = state.tanks.some(
+    (t) => (t.kind === 'storage' && t.stock.some((i) => i.count > 0)) || (t.kind === 'display' && t.fish.length > 0),
   )
-  if (!hasFish) {
+  if (!hasAnything) {
     state.nextVisitorIn = 60
     return
   }
-  if (state.visitors.length >= MAX_VISITORS) {
-    state.nextVisitorIn = 5
-    return
+  const order = generateOrder(state)
+  if (order) {
+    state.orders.push(order)
+    state.totalVisitors += 1
+    const species = SPECIES_BY_ID[order.speciesId]
+    pushLog(
+      `Покупатель хочет ${species.name} ×${order.qty} (${order.kind === 'demand' ? 'по спросу' : 'по витрине'})`,
+      'info',
+    )
   }
-  state.visitors.push({
-    id: `v${state.epoch}-${Math.random().toString(36).slice(2, 6)}`,
-    phase: 'watching',
-    timeLeft: 3 + Math.random() * 5 + state.shop.restAreas * 0.5,
-    targetTankId: null,
-    targetFishId: null,
-  })
-  state.totalVisitors += 1
   state.nextVisitorIn = arrivalInterval(shopAttractiveness(state), state.shop.cashRegister)
-  pushLog('Посетитель зашёл и наблюдает за рыбами', 'info')
   bump()
 }
 
-function updateVisitors(dt: number): void {
-  let changed = false
-  for (const v of state.visitors) v.timeLeft -= dt
-
-  for (const v of state.visitors) {
-    if (v.timeLeft > 0) continue
-    if (v.phase === 'watching') {
-      const target = pickTargetFish(state)
-      if (!target) {
-        v.phase = 'leaving'
-        v.timeLeft = 0.8
-        pushLog('Посетитель посмотрел на пустые витрины и ушёл', 'info')
-      } else {
-        const p = conversionChance(
-          shopAttractiveness(state),
-          tankAttractiveness(target.tank),
-          target.fish.health,
-          state.shop.restAreas,
-        )
-        if (Math.random() < p) {
-          v.phase = 'deciding'
-          v.timeLeft = 0.5
-          v.targetTankId = target.tank.id
-          v.targetFishId = target.fish.id
-        } else {
-          v.phase = 'leaving'
-          v.timeLeft = 0.8
-          pushLog('Посетитель посмотрел на рыб и ушёл без покупки', 'info')
-        }
-      }
-      changed = true
-    } else if (v.phase === 'deciding') {
-      const tank = tankById(v.targetTankId)
-      const fish = tank?.fish.find((f) => f.id === v.targetFishId)
-      if (tank && fish) {
-        const species = SPECIES_BY_ID[fish.speciesId]
-        const price = Math.round(species.sellPrice * (0.85 + Math.random() * 0.4))
-        state.money += price
-        tank.fish = tank.fish.filter((f) => f.id !== fish.id)
-        state.sales += 1
-        pushLog(`Посетитель купил ${species.name} за ${price}₽`, 'sell')
-      } else {
-        pushLog('Посетитель передумал — этой рыбы уже нет', 'info')
-      }
-      v.phase = 'leaving'
-      v.timeLeft = 0.6
-      changed = true
+function updateOrders(dt: number): void {
+  let expired = 0
+  for (const o of state.orders) o.timeLeft -= dt
+  const before = state.orders.length
+  state.orders = state.orders.filter((o) => {
+    if (o.timeLeft <= 0) {
+      expired++
+      return false
     }
+    return true
+  })
+  if (expired > 0) {
+    pushLog(`${expired} заказ(а) не выполнено — покупатели ушли`, 'warn')
   }
-
-  const before = state.visitors.length
-  state.visitors = state.visitors.filter((v) => v.timeLeft > 0)
-  if (state.visitors.length !== before) changed = true
-  if (changed) bump()
+  if (before !== state.orders.length || expired > 0) bump()
 }
 
 function tick(dt: number): void {
@@ -420,14 +394,15 @@ function tick(dt: number): void {
   if (state.daySeconds >= DAY_SECONDS) {
     state.daySeconds -= DAY_SECONDS
     state.day += 1
+    updateMarket(state)
     const cost = dailyUpkeep(state, SPECIES_BY_ID)
     state.money -= cost
-    pushLog(`День ${state.day}: аренда и содержание −${cost}₽`, 'money')
+    pushLog(`День ${state.day}: рынок изменился, аренда и содержание −${cost}₽`, 'money')
     bump()
   }
 
   updateFish(dt)
-  updateVisitors(dt)
+  updateOrders(dt)
 
   state.nextVisitorIn -= dt
   if (state.nextVisitorIn <= 0) tryArrive()
@@ -450,3 +425,4 @@ function frame(now: number): void {
 
 requestAnimationFrame(frame)
 setInterval(() => saveState(state), 2000)
+setInterval(() => bump(), 1000)

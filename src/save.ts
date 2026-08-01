@@ -1,6 +1,7 @@
 import type { GameState } from './types'
+import { FISH_SPECIES } from './data/fish'
 
-const KEY = 'aquarist-save-v2'
+const KEY = 'aquarist-save-v3'
 export const START_MONEY = 800
 
 export function defaultState(): GameState {
@@ -13,6 +14,8 @@ export function defaultState(): GameState {
       componentRacks: 0,
       rackInventory: [],
     },
+    market: Object.fromEntries(FISH_SPECIES.map((s) => [s.id, 1])),
+    orders: [],
     tanks: [
       {
         id: 't1',
@@ -48,11 +51,10 @@ export function defaultState(): GameState {
     log: [
       {
         day: 1,
-        text: 'Добро пожаловать! Закупите рыб на склад, заселите их в витрину и настройте условия под их нужды.',
+        text: 'Добро пожаловать! Закупите рыб на склад, заселите их в витрину для привлекательности. Покупатели оставляют заказы — выполняйте их вручную.',
         kind: 'info',
       },
     ],
-    visitors: [],
     nextVisitorIn: 25,
     totalVisitors: 0,
     sales: 0,

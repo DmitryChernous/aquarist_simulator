@@ -627,3 +627,37 @@ body {
 #tab-display > .tank-bar {
   flex: 1 1 100%;
 }
+
+.orders-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.order-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.order-name {
+  flex: 1;
+  min-width: 140px;
+  font-weight: 600;
+}
+
+.order-price {
+  color: var(--accent);
+}
+
+.order-timer {
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}

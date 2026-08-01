@@ -13,7 +13,7 @@ import {
 } from '../data/shop'
 import { compatibility } from '../sim/conditions'
 import { tankAttractiveness } from '../sim/buyers'
-import { stockTotal, wholesalePrice } from '../sim/economy'
+import { availableStock, buyPrice, retailPrice, stockTotal, wholesalePrice } from '../sim/economy'
 import type { ComponentId, GameState, TankKind, TankState } from '../types'
 
 export interface UIActions {
@@ -28,9 +28,9 @@ export interface UIActions {
   onSelectStorage(tankId: string): void
   onBuyFishToStorage(speciesId: string, storageTankId: string): void
   onWholesaleSell(speciesId: string, storageTankId: string): void
-  onStockToDisplay(speciesId: string, storageTankId: string, displayTankId: string, count: number): void
-  onSellDisplayFish(tankId: string, fishId: string): void
+  onStockToDisplay(speciesId: string, displayTankId: string, count: number): void
   onMoveDisplayToStorage(tankId: string, fishId: string): void
+  onFulfillOrder(orderId: string): void
   onReset(): void
 }
 
@@ -73,6 +73,12 @@ function fillSelect(select: HTMLSelectElement, options: { value: string; label: 
   else if (options.length) select.value = options[0].value
 }
 
+function demandBadge(factor: number): HTMLElement {
+  if (factor >= 1.3) return el('span', 'compat ok', `спрос высокий ×${factor.toFixed(2)}`)
+  if (factor >= 0.85) return el('span', 'compat warn', `спрос средний ×${factor.toFixed(2)}`)
+  return el('span', 'compat dead', `спрос низкий ×${factor.toFixed(2)}`)
+}
+
 export function buildApp(actions: UIActions) {
   const app = document.querySelector<HTMLDivElement>('#app')!
   app.innerHTML = ''
@@ -88,9 +94,9 @@ export function buildApp(actions: UIActions) {
   const displaySelect = app.querySelector<HTMLSelectElement>('#displaySelect')!
   const storageSelect = app.querySelector<HTMLSelectElement>('#storageSelect')!
   const storeDest = app.querySelector<HTMLSelectElement>('#storeDest')!
-  const stockDest = app.querySelector<HTMLSelectElement>('#stockDest')!
 
   const shopEquipment = app.querySelector<HTMLDivElement>('.shop-equipment')!
+  const ordersPanel = app.querySelector<HTMLDivElement>('.orders-panel')!
   const displayCards = app.querySelector<HTMLDivElement>('.display-cards')!
   const storageCards = app.querySelector<HTMLDivElement>('.storage-cards')!
   const displayHeader = app.querySelector<HTMLDivElement>('.displays .group-title')!
@@ -102,6 +108,7 @@ export function buildApp(actions: UIActions) {
   const tankStatus = app.querySelector<HTMLDivElement>('.tank-status')!
   const designPanel = app.querySelector<HTMLDivElement>('.design-panel')!
   const componentsPanel = app.querySelector<HTMLDivElement>('.components-panel')!
+  const stockinPanel = app.querySelector<HTMLDivElement>('.stockin-panel')!
   const tankFishList = app.querySelector<HTMLDivElement>('.tank-fish')!
   const stockList = app.querySelector<HTMLDivElement>('.stock-list')!
   const rackPanel = app.querySelector<HTMLDivElement>('.rack-panel')!
@@ -149,7 +156,7 @@ export function buildApp(actions: UIActions) {
     hudAtt.classList.toggle('good', shopAtt >= 60)
     hudAtt.classList.toggle('mid', shopAtt >= 30 && shopAtt < 60)
     hudAtt.classList.toggle('bad', shopAtt < 30)
-    hudVisitors.textContent = `Посетители: ${state.visitors.length}`
+    hudVisitors.textContent = `Заказов: ${state.orders.length}`
     hudSales.textContent = `Продаж: ${state.sales}`
     if (performance.now() - lastFlashAt > 2500) hudFlash.classList.remove('show')
 
@@ -162,6 +169,7 @@ export function buildApp(actions: UIActions) {
     if (state.epoch !== epoch) {
       epoch = state.epoch
       renderZal(state)
+      renderOrders(state)
       renderDisplay(state)
       renderStorage(state)
       renderStore(state)
@@ -187,7 +195,7 @@ export function buildApp(actions: UIActions) {
       const isRegister = item.key === 'cashRegister'
       card.append(el('strong', 'shop-name', def.name), el('div', 'shop-desc', def.desc), el('div', 'shop-state', item.state))
       if (!(isRegister && shop.cashRegister)) {
-        const btn = el('button', 'btn small', isRegister && shop.cashRegister ? 'Установлено' : `Купить — ${def.price}₽`)
+        const btn = el('button', 'btn small', `Купить — ${def.price}₽`)
         btn.disabled = state.money < def.price
         btn.addEventListener('click', () => actions.onBuyShopItem(item.key))
         card.append(btn)
@@ -216,7 +224,7 @@ export function buildApp(actions: UIActions) {
     addDisplayBtn.disabled = displays.length >= slots || state.money < DISPLAY_TANK_PRICE
 
     const storages = storageTanks(state)
-    storageHeader.textContent = `Склад (${storages.length})`
+    storageHeader.textContent = `Склад / «на продажу» (${storages.length})`
     storageCards.innerHTML = ''
     for (const t of storages) {
       const card = el('div', 'tank-card')
@@ -237,9 +245,39 @@ export function buildApp(actions: UIActions) {
     addStorageBtn.disabled = state.money < STORAGE_TANK_PRICE
 
     visitorsInfo.textContent =
-      state.visitors.length === 0
-        ? 'Сейчас в зале никого. Покупатели приходят тем чаще, чем выше привлекательность.'
-        : `Сейчас в зале ${state.visitors.length} посетител${state.visitors.length === 1 ? 'ь' : 'я'} (наблюдают за рыбами).`
+      state.orders.length === 0
+        ? 'Покупатели приходят, когда в магазине есть рыбы. Они оставляют заказы — выполняйте их вручную.'
+        : 'Покупатели оставили заказы. Выполните их, пока клиенты не ушли.'
+  }
+
+  function renderOrders(state: GameState): void {
+    ordersPanel.innerHTML = ''
+    if (state.orders.length === 0) {
+      ordersPanel.append(el('div', 'empty', 'Заказов нет.'))
+      return
+    }
+    for (const order of state.orders) {
+      const species = SPECIES_BY_ID[order.speciesId]
+      const row = el('div', 'order-row')
+      const dot = el('span', 'dot')
+      dot.style.background = species.color
+      const kindLabel = order.kind === 'demand' ? 'по спросу' : 'по витрине'
+      const badge = el('span', order.kind === 'demand' ? 'compat ok' : 'compat warn', kindLabel)
+      const total = order.unitPrice * order.qty
+      const timer = el('span', 'order-timer', `⏳ ${Math.ceil(order.timeLeft)}с`)
+      const sellBtn = el('button', 'btn small', `Продать за ${total}₽`)
+      sellBtn.disabled = availableStock(state, order.speciesId) < order.qty
+      sellBtn.addEventListener('click', () => actions.onFulfillOrder(order.id))
+      row.append(
+        dot,
+        el('span', 'order-name', `${species.name} ×${order.qty}`),
+        el('span', 'order-price', `по ${order.unitPrice}₽`),
+        timer,
+        badge,
+        sellBtn,
+      )
+      ordersPanel.append(row)
+    }
   }
 
   function renderDisplay(state: GameState): void {
@@ -254,6 +292,7 @@ export function buildApp(actions: UIActions) {
       tankStatus.textContent = 'Добавьте витрину во вкладке «Зал».'
       designPanel.innerHTML = ''
       componentsPanel.innerHTML = ''
+      stockinPanel.innerHTML = ''
       tankFishList.innerHTML = ''
       return
     }
@@ -303,10 +342,39 @@ export function buildApp(actions: UIActions) {
       }
     }
 
+    stockinPanel.innerHTML = ''
+    const stockById = new Map<string, number>()
+    for (const st of storageTanks(state)) {
+      for (const item of st.stock) stockById.set(item.speciesId, (stockById.get(item.speciesId) ?? 0) + item.count)
+    }
+    if (stockById.size === 0) {
+      stockinPanel.append(el('div', 'empty', 'Склад пуст — закупите рыб во вкладке «Магазин».'))
+    }
+    for (const [speciesId, count] of stockById) {
+      const species = SPECIES_BY_ID[speciesId]
+      const row = el('div', 'stock-row')
+      const dot = el('span', 'dot')
+      dot.style.background = species.color
+      const name = el('span', 'stock-name', `${species.name} — на складе ${count}`)
+      const countInput = el('input')
+      countInput.type = 'number'
+      countInput.min = '1'
+      countInput.max = String(count)
+      countInput.value = '1'
+      countInput.className = 'count-input'
+      const moveBtn = el('button', 'btn small', 'Заселить')
+      moveBtn.addEventListener('click', () => {
+        const n = Math.max(1, Math.min(count, Number(countInput.value) || 1))
+        actions.onStockToDisplay(speciesId, tank.id, n)
+      })
+      row.append(dot, name, countInput, moveBtn)
+      stockinPanel.append(row)
+    }
+
     tankFishList.innerHTML = ''
     tankFishList.append(el('div', 'list-title', `Рыбы в витрине (${tank.fish.length})`))
     if (tank.fish.length === 0) {
-      tankFishList.append(el('div', 'empty', 'Витрина пуста. Заселите рыб со склада.'))
+      tankFishList.append(el('div', 'empty', 'Витрина пуста. Заселите рыб из склада выше.'))
     }
     for (const fish of tank.fish) {
       const species = SPECIES_BY_ID[fish.speciesId]
@@ -323,9 +391,7 @@ export function buildApp(actions: UIActions) {
       health.append(bar, el('span', 'health-num', `${Math.round(fish.health)}%`))
       const toStorage = el('button', 'btn small', 'В склад')
       toStorage.addEventListener('click', () => actions.onMoveDisplayToStorage(tank.id, fish.id))
-      const sell = el('button', 'btn small', 'Продать')
-      sell.addEventListener('click', () => actions.onSellDisplayFish(tank.id, fish.id))
-      row.append(dot, name, health, toStorage, sell)
+      row.append(dot, name, health, toStorage)
       tankFishList.append(row)
     }
   }
@@ -336,11 +402,6 @@ export function buildApp(actions: UIActions) {
       storageTanks(state).map((t) => ({ value: t.id, label: t.name })),
       state.selectedStorageId,
     )
-    fillSelect(
-      stockDest,
-      displayTanks(state).map((t) => ({ value: t.id, label: t.name })),
-      displayTanks(state)[0]?.id ?? null,
-    )
     const tank = tankById(state, state.selectedStorageId)
     if (!tank || tank.kind !== 'storage') {
       stockList.innerHTML = ''
@@ -349,31 +410,20 @@ export function buildApp(actions: UIActions) {
     }
 
     stockList.innerHTML = ''
-    stockList.append(el('div', 'list-title', `Хранение (${stockTotal(tank.stock)} шт.)`))
+    stockList.append(el('div', 'list-title', `Рыбы «на продажу» (${stockTotal(tank.stock)} шт.)`))
     if (tank.stock.length === 0) {
       stockList.append(el('div', 'empty', 'Склад пуст. Закупите рыб во вкладке «Магазин».'))
     }
     for (const item of tank.stock) {
       const species = SPECIES_BY_ID[item.speciesId]
+      const f = state.market[item.speciesId] ?? 1
       const row = el('div', 'stock-row')
       const dot = el('span', 'dot')
       dot.style.background = species.color
       const name = el('span', 'stock-name', `${species.name} — ${item.count} шт.`)
-      const wholesaleBtn = el('button', 'btn small', `Опт — ${wholesalePrice(species)}₽/шт`)
-      wholesaleBtn.disabled = state.money < 0
+      const wholesaleBtn = el('button', 'btn small', `Опт — ${wholesalePrice(species, f)}₽/шт`)
       wholesaleBtn.addEventListener('click', () => actions.onWholesaleSell(item.speciesId, tank.id))
-      const countInput = el('input')
-      countInput.type = 'number'
-      countInput.min = '1'
-      countInput.max = String(item.count)
-      countInput.value = '1'
-      countInput.className = 'count-input'
-      const moveBtn = el('button', 'btn small', 'Заселить')
-      moveBtn.addEventListener('click', () => {
-        const n = Math.max(1, Math.min(item.count, Number(countInput.value) || 1))
-        actions.onStockToDisplay(item.speciesId, tank.id, stockDest.value, n)
-      })
-      row.append(dot, name, wholesaleBtn, countInput, moveBtn)
+      row.append(dot, name, wholesaleBtn)
       stockList.append(row)
     }
 
@@ -403,12 +453,14 @@ export function buildApp(actions: UIActions) {
     storeGrid.innerHTML = ''
     const refTank = tankById(state, state.selectedTankId)
     for (const species of FISH_SPECIES) {
+      const factor = state.market[species.id] ?? 1
       const card = el('div', 'store-card')
       const head = el('div', 'store-head')
       const dot = el('span', 'dot')
       dot.style.background = species.color
       head.append(dot, el('strong', 'store-name', species.name))
       card.append(head, el('div', 'store-latin', species.latin))
+      card.append(demandBadge(factor))
 
       if (refTank && refTank.kind === 'display') {
         const rep = compatibility(species, refTank)
@@ -429,13 +481,13 @@ export function buildApp(actions: UIActions) {
 
       const priceRow = el('div', 'store-prices')
       priceRow.append(
-        el('span', '', `Закупка ${species.buyPrice}₽`),
-        el('span', 'sell-hint', `Розница ${species.sellPrice}₽ · опт ${wholesalePrice(species)}₽`),
+        el('span', '', `Закупка ${buyPrice(species, factor)}₽`),
+        el('span', 'sell-hint', `Розница ${retailPrice(species, factor)}₽ · опт ${wholesalePrice(species, factor)}₽`),
       )
       card.append(priceRow)
 
-      const buyBtn = el('button', 'btn buy', `Купить на склад — ${species.buyPrice}₽`)
-      buyBtn.disabled = state.money < species.buyPrice
+      const buyBtn = el('button', 'btn buy', `Купить на склад — ${buyPrice(species, factor)}₽`)
+      buyBtn.disabled = state.money < buyPrice(species, factor)
       buyBtn.addEventListener('click', () => actions.onBuyFishToStorage(species.id, storeDest.value))
       card.append(buyBtn)
       storeGrid.append(card)
@@ -505,7 +557,7 @@ function buildLayout(): HTMLElement {
     el('span', 'hud-money', 'Деньги: —'),
     el('span', 'hud-day', 'День —'),
     el('span', 'hud-att', 'Привлекательность: —'),
-    el('span', 'hud-visitors', 'Посетители: —'),
+    el('span', 'hud-visitors', 'Заказов: —'),
     el('span', 'hud-sales', 'Продаж: —'),
   )
   const right = el('div', 'hud-right')
@@ -532,6 +584,9 @@ function buildLayout(): HTMLElement {
   zalTab.append(
     el('h2', 'sec-title', 'Оборудование зала'),
     el('div', 'shop-equipment'),
+    el('h2', 'sec-title', 'Заказы покупателей'),
+    el('div', 'orders-panel'),
+    el('h2', 'sec-title', 'Аквариумы'),
     el('div', 'tank-lists'),
     el('div', 'visitors-info'),
   )
@@ -543,7 +598,7 @@ function buildLayout(): HTMLElement {
   addDisplay.id = 'addDisplay'
   displays.append(addDisplay)
   const storages = el('div', 'tank-group storages')
-  storages.append(el('div', 'group-title', 'Склад'))
+  storages.append(el('div', 'group-title', 'Склад / «на продажу»'))
   storages.append(el('div', 'tank-cards storage-cards'))
   const addStorage = el('button', 'btn', 'Добавить склад')
   addStorage.id = 'addStorage'
@@ -574,6 +629,8 @@ function buildLayout(): HTMLElement {
   side.append(el('div', 'design-panel'))
   side.append(el('h3', '', 'Компоненты'))
   side.append(el('div', 'components-panel'))
+  side.append(el('h3', '', 'Заселить из склада'))
+  side.append(el('div', 'stockin-panel'))
   side.append(el('h3', '', 'Рыбы'))
   side.append(el('div', 'tank-fish'))
   displayTab.append(tankWrap, side)
@@ -584,17 +641,11 @@ function buildLayout(): HTMLElement {
   storageBar.append(el('label', '', 'Склад: '))
   const storageSelect = el('select')
   storageSelect.id = 'storageSelect'
-  const stockBar = el('div', 'tank-bar')
-  stockBar.append(el('label', '', 'Заселять в витрину: '))
-  const stockDest = el('select')
-  stockDest.id = 'stockDest'
   storageBar.append(storageSelect)
-  stockBar.append(stockDest)
   storageTab.append(
     storageBar,
-    el('h2', 'sec-title', 'Рыбы на хранении'),
+    el('h2', 'sec-title', 'Рыбы «на продажу»'),
     el('div', 'stock-list'),
-    stockBar,
     el('h2', 'sec-title', 'Полка для комплектующих'),
     el('div', 'rack-panel'),
   )

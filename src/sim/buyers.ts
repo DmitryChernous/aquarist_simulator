@@ -1,11 +1,6 @@
-import type { FishInstance, GameState, TankState } from '../types'
+import type { GameState, Order, TankState } from '../types'
 import { MAX_DESIGN_LEVEL } from '../data/aquarium'
-import { SPECIES_BY_ID } from '../data/fish'
-
-export interface TargetFish {
-  tank: TankState
-  fish: FishInstance
-}
+import { FISH_SPECIES, SPECIES_BY_ID } from '../data/fish'
 
 export function tankAttractiveness(tank: TankState): number {
   const design = (tank.designLevel / MAX_DESIGN_LEVEL) * 30
@@ -46,45 +41,107 @@ export function shopAttractiveness(state: GameState): number {
 }
 
 export function arrivalInterval(shopAtt: number, hasRegister: boolean): number {
-  return hasRegister
-    ? Math.max(4, 28 - shopAtt * 0.2)
-    : Math.max(12, 45 - shopAtt * 0.3)
+  return hasRegister ? Math.max(4, 28 - shopAtt * 0.2) : Math.max(12, 45 - shopAtt * 0.3)
 }
 
-export function conversionChance(
-  shopAtt: number,
-  tankAtt: number,
-  fishHealth: number,
-  restAreas: number,
-): number {
-  return Math.max(
-    0.05,
-    Math.min(0.92, 0.25 + shopAtt / 150 + tankAtt / 200 + (fishHealth - 50) / 200 + restAreas * 0.06),
-  )
-}
-
-export function pickTargetFish(state: GameState): TargetFish | null {
-  const candidates: TargetFish[] = []
-  for (const tank of state.tanks) {
-    if (tank.kind !== 'display') continue
-    for (const fish of tank.fish) {
-      if (fish.health < 15) continue
-      candidates.push({ tank, fish })
+export function conversionChance(state: GameState): number {
+  const shopAtt = shopAttractiveness(state)
+  let healthSum = 0
+  let healthCount = 0
+  for (const t of state.tanks) {
+    if (t.kind !== 'display') continue
+    for (const f of t.fish) {
+      healthSum += f.health
+      healthCount++
     }
   }
-  if (candidates.length === 0) return null
+  const avg = healthCount ? healthSum / healthCount : 0
+  return Math.max(0.08, Math.min(0.95, 0.25 + shopAtt / 150 + state.shop.restAreas * 0.05 + (avg - 50) / 200))
+}
 
-  const weights = candidates.map((c) => {
-    const species = SPECIES_BY_ID[c.fish.speciesId]
-    let w = species.appeal * (c.fish.health / 100) * (tankAttractiveness(c.tank) / 50 + 0.5)
-    if (c.fish.health < 50) w *= 0.3
-    return Math.max(0.01, w)
-  })
+export function speciesDisplayScore(state: GameState, speciesId: string): number {
+  let sum = 0
+  let count = 0
+  for (const tank of state.tanks) {
+    if (tank.kind !== 'display') continue
+    const tAtt = tankAttractiveness(tank)
+    for (const f of tank.fish) {
+      if (f.speciesId !== speciesId) continue
+      sum += (f.health / 100) * (tAtt / 100)
+      count++
+    }
+  }
+  if (count === 0) return 0
+  return Math.max(0, Math.min(1, sum / count))
+}
+
+export function updateMarket(state: GameState): void {
+  for (const species of FISH_SPECIES) {
+    const f = state.market[species.id] ?? 1
+    const drift = (Math.random() - 0.5) * 0.12
+    const revert = (1 - f) * 0.08
+    state.market[species.id] = Math.max(0.5, Math.min(1.8, f + drift + revert))
+  }
+}
+
+function pickWeighted(values: string[], weights: number[]): string {
   const total = weights.reduce((a, b) => a + b, 0)
   let roll = Math.random() * total
-  for (let i = 0; i < candidates.length; i++) {
+  for (let i = 0; i < values.length; i++) {
     roll -= weights[i]
-    if (roll <= 0) return candidates[i]
+    if (roll <= 0) return values[i]
   }
-  return candidates[candidates.length - 1]
+  return values[values.length - 1]
+}
+
+export function generateOrder(state: GameState): Order | null {
+  if (Math.random() >= conversionChance(state)) return null
+
+  const inStock = new Set<string>()
+  for (const t of state.tanks) {
+    if (t.kind !== 'storage') continue
+    for (const item of t.stock) if (item.count > 0) inStock.add(item.speciesId)
+  }
+  const onDisplay = new Set<string>()
+  for (const t of state.tanks) {
+    if (t.kind !== 'display') continue
+    for (const f of t.fish) onDisplay.add(f.speciesId)
+  }
+  if (inStock.size === 0 && onDisplay.size === 0) return null
+
+  const determined = onDisplay.size === 0 ? true : Math.random() < 0.5
+
+  let speciesId: string
+  let qty: number
+  let unitPrice: number
+  let kind: Order['kind']
+
+  if (determined) {
+    const arr = [...new Set([...inStock, ...onDisplay])]
+    const weights = arr.map((s) => Math.max(0.3, state.market[s] ?? 1))
+    speciesId = pickWeighted(arr, weights)
+    qty = 1 + Math.floor(Math.random() * 3)
+    const f = state.market[speciesId] ?? 1
+    unitPrice = Math.round(SPECIES_BY_ID[speciesId].sellPrice * f * (0.92 + Math.random() * 0.16))
+    kind = 'demand'
+  } else {
+    const arr = [...onDisplay]
+    const weights = arr.map((s) => speciesDisplayScore(state, s) + 0.05)
+    speciesId = pickWeighted(arr, weights)
+    const quality = speciesDisplayScore(state, speciesId)
+    qty = 1 + Math.floor(Math.random() * 2)
+    const f = state.market[speciesId] ?? 1
+    const priceBoost = 0.85 + 0.3 * quality + state.shop.restAreas * 0.02
+    unitPrice = Math.round(SPECIES_BY_ID[speciesId].sellPrice * f * priceBoost)
+    kind = 'display'
+  }
+
+  return {
+    id: `o${state.epoch}-${Math.random().toString(36).slice(2, 7)}`,
+    speciesId,
+    qty,
+    unitPrice,
+    timeLeft: 18 + Math.random() * 22,
+    kind,
+  }
 }
