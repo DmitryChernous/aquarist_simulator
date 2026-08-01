@@ -1,4 +1,4 @@
-import type { FishInstance, FishSpecies, GameState } from '../types'
+import type { FishInstance, FishSpecies, TankState } from '../types'
 
 const RNG_SEED_OFFSET = 13
 
@@ -76,14 +76,13 @@ function drawDecor(ctx: CanvasRenderingContext2D, index: number, h: number): voi
 
 export function renderTank(
   canvas: HTMLCanvasElement,
-  state: GameState,
+  tank: TankState,
   speciesById: Record<string, FishSpecies>,
 ): void {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   const w = canvas.width
   const h = canvas.height
-  const aq = state.aquarium
 
   const grad = ctx.createLinearGradient(0, 0, 0, h)
   grad.addColorStop(0, '#0e3357')
@@ -100,12 +99,12 @@ export function renderTank(
     ctx.fill()
   }
 
-  const plantCount = Math.round(aq.vegetation * 24)
+  const plantCount = Math.round(tank.vegetation * 24)
   for (let i = 0; i < plantCount; i++) drawPlant(ctx, i, w, h)
 
-  for (let d = 0; d < aq.designLevel; d++) drawDecor(ctx, d, h)
+  for (let d = 0; d < tank.designLevel; d++) drawDecor(ctx, d, h)
 
-  for (const fish of state.fish) {
+  for (const fish of tank.fish) {
     const species = speciesById[fish.speciesId]
     if (!species) continue
     drawFish(ctx, fish, species)

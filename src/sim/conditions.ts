@@ -1,7 +1,10 @@
-import type { FishSpecies, AquariumConfig } from '../types'
+import type { FishSpecies, TankState } from '../types'
 
 export interface CompatibilityReport {
   score: number
+  temperature: number
+  hardness: number
+  vegetation: number
   issues: string[]
 }
 
@@ -13,23 +16,23 @@ function factorWithin(value: number, min: number, max: number): number {
   return Math.max(0, 1 - dist)
 }
 
-export function compatibility(species: FishSpecies, aq: AquariumConfig): CompatibilityReport {
-  const t = factorWithin(aq.temperature, species.tempMin, species.tempMax)
-  const h = factorWithin(aq.hardness, species.hardMin, species.hardMax)
-  const v = factorWithin(aq.vegetation, species.vegMin, species.vegMax)
-  const score = (t + h + v) / 3
+export function compatibility(species: FishSpecies, tank: TankState): CompatibilityReport {
+  const temperature = factorWithin(tank.temperature, species.tempMin, species.tempMax)
+  const hardness = factorWithin(tank.hardness, species.hardMin, species.hardMax)
+  const vegetation = factorWithin(tank.vegetation, species.vegMin, species.vegMax)
+  const score = (temperature + hardness + vegetation) / 3
 
   const issues: string[] = []
-  if (aq.temperature < species.tempMin || aq.temperature > species.tempMax) {
-    issues.push(`температура ${aq.temperature}°C (нужно ${species.tempMin}–${species.tempMax}°C)`)
+  if (tank.temperature < species.tempMin || tank.temperature > species.tempMax) {
+    issues.push(`температура ${tank.temperature}°C (нужно ${species.tempMin}–${species.tempMax}°C)`)
   }
-  if (aq.hardness < species.hardMin || aq.hardness > species.hardMax) {
-    issues.push(`жёсткость ${aq.hardness}°dH (нужно ${species.hardMin}–${species.hardMax}°dH)`)
+  if (tank.hardness < species.hardMin || tank.hardness > species.hardMax) {
+    issues.push(`жёсткость ${tank.hardness}°dH (нужно ${species.hardMin}–${species.hardMax}°dH)`)
   }
-  if (aq.vegetation < species.vegMin || aq.vegetation > species.vegMax) {
+  if (tank.vegetation < species.vegMin || tank.vegetation > species.vegMax) {
     issues.push(
-      `растительность ${Math.round(aq.vegetation * 100)}% (нужно ${Math.round(species.vegMin * 100)}–${Math.round(species.vegMax * 100)}%)`,
+      `растительность ${Math.round(tank.vegetation * 100)}% (нужно ${Math.round(species.vegMin * 100)}–${Math.round(species.vegMax * 100)}%)`,
     )
   }
-  return { score, issues }
+  return { score, temperature, hardness, vegetation, issues }
 }
