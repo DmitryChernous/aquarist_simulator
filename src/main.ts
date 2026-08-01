@@ -23,7 +23,6 @@ import { renderTank } from './ui/render'
 import { buildApp } from './ui/panels'
 import type { ComponentId, FishInstance, FishSpecies, GameState, LogKind, TankKind, TankState } from './types'
 
-const DAY_SECONDS = 30
 const TANK = { width: 960, height: 420 }
 const LOG_LIMIT = 40
 
@@ -235,6 +234,15 @@ const ui = buildApp({
     pushLog(`Продано ${order.qty} × ${SPECIES_BY_ID[order.speciesId].name} за ${revenue}₽`, 'sell')
     bump()
   },
+  onEndDay() {
+    state.day += 1
+    state.daySeconds = 0
+    updateMarket(state)
+    const cost = dailyUpkeep(state, SPECIES_BY_ID)
+    state.money -= cost
+    pushLog(`День ${state.day}: рынок изменился, аренда и содержание −${cost}₽`, 'money')
+    bump()
+  },
   onReset() {
     clearSave()
     location.reload()
@@ -391,16 +399,6 @@ function updateOrders(dt: number): void {
 
 function tick(dt: number): void {
   state.daySeconds += dt
-  if (state.daySeconds >= DAY_SECONDS) {
-    state.daySeconds -= DAY_SECONDS
-    state.day += 1
-    updateMarket(state)
-    const cost = dailyUpkeep(state, SPECIES_BY_ID)
-    state.money -= cost
-    pushLog(`День ${state.day}: рынок изменился, аренда и содержание −${cost}₽`, 'money')
-    bump()
-  }
-
   updateFish(dt)
   updateOrders(dt)
 

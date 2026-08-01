@@ -31,6 +31,7 @@ export interface UIActions {
   onStockToDisplay(speciesId: string, displayTankId: string, count: number): void
   onMoveDisplayToStorage(tankId: string, fishId: string): void
   onFulfillOrder(orderId: string): void
+  onEndDay(): void
   onReset(): void
 }
 
@@ -125,6 +126,9 @@ export function buildApp(actions: UIActions) {
   displaySelect.addEventListener('change', () => actions.onSelectDisplay(displaySelect.value))
   storageSelect.addEventListener('change', () => actions.onSelectStorage(storageSelect.value))
   app.querySelector<HTMLButtonElement>('.btn-reset')!.addEventListener('click', () => actions.onReset())
+  app.querySelector<HTMLButtonElement>('.btn-endday')!.addEventListener('click', () => {
+    if (window.confirm('Завершить день? Обновится рынок, будет списана аренда и содержание.')) actions.onEndDay()
+  })
   addDisplayBtn.addEventListener('click', () => actions.onAddTank('display'))
   addStorageBtn.addEventListener('click', () => actions.onAddTank('storage'))
 
@@ -151,7 +155,7 @@ export function buildApp(actions: UIActions) {
 
   function update(state: GameState, shopAtt: number): void {
     hudMoney.textContent = `Деньги: ${state.money}₽`
-    hudDay.textContent = `День ${state.day}`
+    hudDay.textContent = `День ${state.day} · ${Math.floor(state.daySeconds)}с`
     hudAtt.textContent = `Привлекательность зала: ${shopAtt}/100`
     hudAtt.classList.toggle('good', shopAtt >= 60)
     hudAtt.classList.toggle('mid', shopAtt >= 30 && shopAtt < 60)
@@ -246,8 +250,8 @@ export function buildApp(actions: UIActions) {
 
     visitorsInfo.textContent =
       state.orders.length === 0
-        ? 'Покупатели приходят, когда в магазине есть рыбы. Они оставляют заказы — выполняйте их вручную.'
-        : 'Покупатели оставили заказы. Выполните их, пока клиенты не ушли.'
+        ? 'Покупатели приходят, когда в магазине есть рыбы. Они оставляют заказы — выполняйте их вручную. День завершайте кнопкой «Завершить день» — обновится рынок и будет списана аренда.'
+        : 'Покупатели оставили заказы. Выполните их, пока клиенты не ушли. Кнопкой «Завершить день» запустите следующий день.'
   }
 
   function renderOrders(state: GameState): void {
@@ -562,6 +566,8 @@ function buildLayout(): HTMLElement {
   )
   const right = el('div', 'hud-right')
   right.append(el('span', 'hud-flash', ''))
+  const endDayBtn = el('button', 'btn small btn-endday', 'Завершить день')
+  right.append(endDayBtn)
   const resetBtn = el('button', 'btn small btn-reset', 'Сброс')
   right.append(resetBtn)
   header.append(left, right)

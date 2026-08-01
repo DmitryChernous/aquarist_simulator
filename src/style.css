@@ -240,6 +240,11 @@ body {
   color: #9fb6cd;
 }
 
+.btn-endday {
+  background: var(--ok);
+  color: #06121f;
+}
+
 .tank-fish {
   display: flex;
   flex-direction: column;
