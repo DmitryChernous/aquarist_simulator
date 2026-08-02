@@ -32,7 +32,6 @@ export interface UIActions {
   onStockToDisplay(speciesId: string, displayTankId: string, count: number): void
   onMoveDisplayToStorage(tankId: string, fishId: string): void
   onFulfillOrder(orderId: string): void
-  onEndDay(): void
   onTogglePause(): void
   onSetSpeed(speed: number): void
   onReset(): void
@@ -136,9 +135,6 @@ export function buildApp(actions: UIActions) {
   for (const btn of speedBtns) {
     btn.addEventListener('click', () => actions.onSetSpeed(Number(btn.dataset.speed)))
   }
-  app.querySelector<HTMLButtonElement>('.btn-endday')!.addEventListener('click', () => {
-    if (window.confirm('Завершить день? Обновится рынок, будет списана аренда и содержание.')) actions.onEndDay()
-  })
   addDisplayBtn.addEventListener('click', () => actions.onAddTank('display'))
   addStorageBtn.addEventListener('click', () => actions.onAddTank('storage'))
 
@@ -598,8 +594,6 @@ function buildLayout(): HTMLElement {
     timeControl.append(b)
   }
   right.append(timeControl)
-  const endDayBtn = el('button', 'btn small btn-endday', 'Завершить день')
-  right.append(endDayBtn)
   const resetBtn = el('button', 'btn small btn-reset', 'Сброс')
   right.append(resetBtn)
   header.append(left, right)

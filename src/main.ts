@@ -238,9 +238,6 @@ const ui = buildApp({
     pushLog(`Продано ${order.qty} × ${SPECIES_BY_ID[order.speciesId].name} за ${revenue}₽`, 'sell')
     bump()
   },
-  onEndDay() {
-    advanceDay()
-  },
   onTogglePause() {
     paused = !paused
   },
