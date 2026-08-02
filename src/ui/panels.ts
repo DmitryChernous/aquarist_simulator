@@ -14,6 +14,7 @@ import {
 import { compatibility } from '../sim/conditions'
 import { tankAttractiveness } from '../sim/buyers'
 import { availableStock, buyPrice, retailPrice, stockTotal, wholesalePrice } from '../sim/economy'
+import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
 import type { ComponentId, GameState, TankKind, TankState } from '../types'
 
 export interface UIActions {
@@ -91,6 +92,8 @@ export function buildApp(actions: UIActions) {
   const hudVisitors = app.querySelector<HTMLSpanElement>('.hud-visitors')!
   const hudSales = app.querySelector<HTMLSpanElement>('.hud-sales')!
   const hudFlash = app.querySelector<HTMLSpanElement>('.hud-flash')!
+  const dayProgressFill = app.querySelector<HTMLDivElement>('.day-progress-fill')!
+  const dayProgressLabel = app.querySelector<HTMLSpanElement>('.day-progress-label')!
 
   const displaySelect = app.querySelector<HTMLSelectElement>('#displaySelect')!
   const storageSelect = app.querySelector<HTMLSelectElement>('#storageSelect')!
@@ -155,7 +158,11 @@ export function buildApp(actions: UIActions) {
 
   function update(state: GameState, shopAtt: number): void {
     hudMoney.textContent = `Деньги: ${state.money}₽`
-    hudDay.textContent = `День ${state.day} · ${Math.floor(state.daySeconds)}с`
+    hudDay.textContent = `День ${state.day} · ${formatGameDate(state.day)}`
+    const ratio = Math.min(1, Math.max(0, state.daySeconds / DAY_DURATION_SECONDS))
+    dayProgressFill.style.width = `${Math.round(ratio * 100)}%`
+    const remain = Math.max(0, Math.ceil(DAY_DURATION_SECONDS - state.daySeconds))
+    dayProgressLabel.textContent = `${Math.floor(state.daySeconds)}с / ${DAY_DURATION_SECONDS}с · осталось ${remain}с`
     hudAtt.textContent = `Привлекательность зала: ${shopAtt}/100`
     hudAtt.classList.toggle('good', shopAtt >= 60)
     hudAtt.classList.toggle('mid', shopAtt >= 30 && shopAtt < 60)
@@ -556,6 +563,7 @@ function buildLayout(): HTMLElement {
   const game = el('div', 'game')
 
   const header = el('header', 'hud')
+  const topRow = el('div', 'hud-top')
   const left = el('div', 'hud-left')
   left.append(
     el('span', 'hud-money', 'Деньги: —'),
@@ -570,7 +578,14 @@ function buildLayout(): HTMLElement {
   right.append(endDayBtn)
   const resetBtn = el('button', 'btn small btn-reset', 'Сброс')
   right.append(resetBtn)
-  header.append(left, right)
+  topRow.append(left, right)
+
+  const progress = el('div', 'day-progress')
+  const progressFill = el('div', 'day-progress-fill')
+  const progressLabel = el('span', 'day-progress-label', '')
+  progress.append(progressFill, progressLabel)
+
+  header.append(topRow, progress)
 
   const nav = el('nav', 'tabs')
   nav.append(

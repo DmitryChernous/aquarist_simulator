@@ -1,6 +1,7 @@
 import './style.css'
 import { SPECIES_BY_ID } from './data/fish'
 import { MAX_DESIGN_LEVEL, designUpgradeCost } from './data/aquarium'
+import { DAY_DURATION_SECONDS } from './timing'
 import {
   COMPONENTS,
   COMPONENT_SLOTS_PER_TANK,
@@ -235,13 +236,7 @@ const ui = buildApp({
     bump()
   },
   onEndDay() {
-    state.day += 1
-    state.daySeconds = 0
-    updateMarket(state)
-    const cost = dailyUpkeep(state, SPECIES_BY_ID)
-    state.money -= cost
-    pushLog(`День ${state.day}: рынок изменился, аренда и содержание −${cost}₽`, 'money')
-    bump()
+    advanceDay()
   },
   onReset() {
     clearSave()
@@ -399,11 +394,23 @@ function updateOrders(dt: number): void {
 
 function tick(dt: number): void {
   state.daySeconds += dt
+  if (state.daySeconds >= DAY_DURATION_SECONDS) advanceDay()
+
   updateFish(dt)
   updateOrders(dt)
 
   state.nextVisitorIn -= dt
   if (state.nextVisitorIn <= 0) tryArrive()
+}
+
+function advanceDay(): void {
+  state.day += 1
+  state.daySeconds = 0
+  updateMarket(state)
+  const cost = dailyUpkeep(state, SPECIES_BY_ID)
+  state.money -= cost
+  pushLog(`День ${state.day}: рынок изменился, аренда и содержание −${cost}₽`, 'money')
+  bump()
 }
 
 let last = performance.now()
