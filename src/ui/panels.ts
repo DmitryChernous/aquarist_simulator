@@ -146,7 +146,6 @@ export function buildApp(actions: UIActions) {
   const shopEquipment = app.querySelector<HTMLDivElement>('.shop-equipment')!
   const shelfStore = app.querySelector<HTMLDivElement>('.shelf-store')!
   const hallList = app.querySelector<HTMLDivElement>('.hall-list')!
-  const hallNav = app.querySelector<HTMLDivElement>('.hall-nav')!
   const ordersPanel = app.querySelector<HTMLDivElement>('.orders-panel')!
 
   const storageSelect = app.querySelector<HTMLSelectElement>('#storageSelect')!
@@ -217,21 +216,6 @@ export function buildApp(actions: UIActions) {
   }
 
   function renderZal(state: GameState): void {
-    hallNav.innerHTML = ''
-    const targets: [TabName, string, string][] = [
-      ['aquarium', 'Аквариум', 'редактор среды'],
-      ['storage', 'Склад', 'инвентарь'],
-      ['store', 'Магазин', 'закупка рыб'],
-      ['orders', 'Заказы', 'клиенты'],
-      ['furni', 'Обустройство', 'мебель и стеллажи'],
-    ]
-    for (const [tab, label, hint] of targets) {
-      const b = el('button', 'btn small hall-nav-btn', label)
-      b.title = hint
-      b.addEventListener('click', () => switchTab(app, tab))
-      hallNav.append(b)
-    }
-
     hallList.innerHTML = ''
     if (state.shelves.length === 0) {
       const empty = el('div', 'empty hall-empty')
@@ -678,8 +662,7 @@ function buildLayout(): HTMLElement {
   zalTab.append(
     el('h2', 'sec-title', 'Выставочный зал'),
     buildHallCanvas(),
-    el('div', 'hall-nav'),
-    el('h2', 'sec-title', 'Стеллажи и аквариумы'),
+    el('h2', 'sec-title', 'Управление стеллажами'),
     el('div', 'hall-list'),
   )
 

@@ -147,6 +147,22 @@ body {
 .tab#tab-store {
   flex-direction: column;
 }
+.tab#tab-zal,
+.tab#tab-storage,
+.tab#tab-orders,
+.tab#tab-furn {
+  flex-direction: column;
+}
+
+.tab#tab-zal .hall-canvas {
+  margin: 0 auto;
+  max-width: 960px;
+}
+.tab#tab-zal .hall-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 
 .tank-wrap {
   flex: 1 1 620px;
@@ -172,18 +188,6 @@ body {
   display: block;
   cursor: pointer;
   margin-bottom: 10px;
-}
-
-.hall-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.hall-nav-btn {
-  background: var(--panel);
-  border: 1px solid var(--border);
 }
 
 .hall-empty {
