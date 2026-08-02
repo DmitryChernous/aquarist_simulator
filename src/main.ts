@@ -1,40 +1,195 @@
 import './style.css'
 import { SPECIES_BY_ID } from './data/fish'
-import { MAX_DESIGN_LEVEL, designUpgradeCost } from './data/aquarium'
+import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from './data/aquarium'
+import { EQUIPMENT, SHELVES, STORAGE_TANK_PRICE, rackCapacity, shelfLoadLeft } from './data/shop'
+import { DECOR } from './data/decor'
 import { DAY_DURATION_SECONDS } from './timing'
-import {
-  COMPONENTS,
-  COMPONENT_SLOTS_PER_TANK,
-  SHOP_ITEMS,
-  DISPLAY_TANK_PRICE,
-  STORAGE_TANK_PRICE,
-  displaySlots,
-  rackCapacity,
-} from './data/shop'
-import { totalRequiredVolume, updateHealth } from './sim/health'
+import { allAquariums, canStock, recalcWater, usedVolume } from './sim/aquarium'
+import { updateHealth } from './sim/health'
 import { availableStock, buyPrice, dailyUpkeep, wholesalePrice } from './sim/economy'
-import {
-  arrivalInterval,
-  generateOrder,
-  shopAttractiveness,
-  updateMarket,
-} from './sim/buyers'
+import { arrivalInterval, generateOrder, shopAttractiveness, updateMarket } from './sim/buyers'
 import { clearSave, loadState, saveState } from './save'
-import { renderTank } from './ui/render'
+import { renderAquarium } from './ui/render'
+import { drawHall, layoutHall, HALL_HEIGHT, HALL_WIDTH } from './ui/renderHall'
 import { buildApp } from './ui/panels'
-import type { ComponentId, FishInstance, FishSpecies, GameState, LogKind, TankKind, TankState } from './types'
+import type { AquariumState, FishInstance, FishSpecies, GameState, LogKind, ShelfState, TankState } from './types'
 
 const TANK = { width: 960, height: 420 }
 const LOG_LIMIT = 40
+let idc = 1
 
 let state: GameState = loadState()
 
 let paused = false
 let timeScale = 1
 
+function uid(prefix: string): string {
+  return `${prefix}${state.epoch}-${(idc++).toString(36)}`
+}
+
+function newAquarium(shelfId: string, slabId: string, modelId: string): AquariumState {
+  const model = AQUARIUM_MODELS.find((m) => m.id === modelId) ?? AQUARIUM_MODELS[2]
+  return {
+    id: uid('a'),
+    name: `Аквариум ${shelfAquariumNum(shelfId) + 1}`,
+    shelfId,
+    slabId,
+    w: model.w,
+    d: model.d,
+    h: model.h,
+    volume: model.volume,
+    water: { temperature: 25, ph: 7, gh: 8, o2: 30, light: 15 },
+    decor: [],
+    fish: [],
+    equipment: [],
+    designLevel: 0,
+  }
+}
+
+function shelfAquariumNum(shelfId: string): number {
+  const shelf = state.shelves.find((s) => s.id === shelfId)
+  return shelf ? shelf.aquariums.length : 0
+}
+
+function freeSlabFor(state: GameState, shelfId: string, modelId: string): string | null {
+  const shelf = state.shelves.find((s) => s.id === shelfId)
+  if (!shelf) return null
+  const model = AQUARIUM_MODELS.find((m) => m.id === modelId)
+  if (!model || model.volume > shelfLoadLeft(shelf)) return null
+  const free = shelf.slabs.find((slab) => !shelf.aquariums.some((a) => a.slabId === slab.id) && model.w <= slab.width && model.d <= slab.depth && model.h <= slab.height)
+  return free ? free.id : null
+}
+
+function storageTank(state: GameState, id: string | null): TankState | undefined {
+  return state.storage.find((t) => t.id === id)
+}
+
+function addStock(tank: TankState, speciesId: string, count: number): void {
+  const item = tank.stock.find((s) => s.speciesId === speciesId)
+  if (item) item.count += count
+  else tank.stock.push({ speciesId, count })
+}
+
+function takeStock(speciesId: string, n: number): number {
+  let need = n
+  for (const tank of state.storage) {
+    if (need <= 0) break
+    const item = tank.stock.find((s) => s.speciesId === speciesId)
+    if (!item || item.count <= 0) continue
+    const take = Math.min(item.count, need)
+    item.count -= take
+    need -= take
+    if (item.count <= 0) tank.stock = tank.stock.filter((s) => s.speciesId !== speciesId)
+  }
+  return n - need
+}
+
 const ui = buildApp({
-  onBuyComponent(id: ComponentId) {
-    const def = COMPONENTS[id]
+  onAddShelf(specId) {
+    const spec = SHELVES[specId as keyof typeof SHELVES]
+    if (!spec) return
+    if (state.money < spec.price) {
+      ui.flash('Не хватает денег!')
+      return
+    }
+    state.money -= spec.price
+    const id = uid('sh')
+    const shelf: ShelfState = {
+      id,
+      name: spec.name,
+      pos: { x: 0, y: 0 },
+      slabs: spec.slabs.map((sl, i) => ({ ...sl, id: `${id}-slab${i}` })),
+      loadCapacityL: spec.loadCapacityL,
+      aquariums: [],
+    }
+    state.shelves.push(shelf)
+    pushLog(`Куплен стеллаж «${spec.name}» за ${spec.price}₽`, 'buy')
+    bump()
+  },
+  onRemoveShelf(shelfId) {
+    const idx = state.shelves.findIndex((s) => s.id === shelfId)
+    if (idx < 0) return
+    const shelf = state.shelves[idx]
+    const n = shelf.aquariums.length
+    state.shelves.splice(idx, 1)
+    if (state.selectedAquariumId && shelf.aquariums.some((a) => a.id === state.selectedAquariumId)) {
+      state.selectedAquariumId = state.shelves[0]?.aquariums[0]?.id ?? null
+    }
+    pushLog(`Убран стеллаж «${shelf.name}» (${n} аквариум(ов) и рыбы удалены)`, 'warn')
+    bump()
+  },
+  onBuyShopItem(kind) {
+    const PRICES = { cashRegister: 300, restArea: 250, componentRack: 150 }
+    if (state.money < PRICES[kind]) {
+      ui.flash('Не хватает денег!')
+      return
+    }
+    state.money -= PRICES[kind]
+    if (kind === 'cashRegister') state.shop.cashRegister = true
+    else if (kind === 'restArea') state.shop.restAreas += 1
+    else if (kind === 'componentRack') state.shop.componentRacks += 1
+    pushLog(`Куплено оборудование зала за ${PRICES[kind]}₽`, 'buy')
+    bump()
+  },
+  onAddAquarium(shelfId, modelId) {
+    const model = AQUARIUM_MODELS.find((m) => m.id === modelId)
+    if (!model) return
+    const slabId = freeSlabFor(state, shelfId, modelId)
+    if (!slabId) {
+      ui.flash('Нет свободной подходящей полки на стеллаже!')
+      return
+    }
+    if (state.money < model.price) {
+      ui.flash('Не хватает денег!')
+      return
+    }
+    state.money -= model.price
+    const aq = newAquarium(shelfId, slabId, modelId)
+    const shelf = state.shelves.find((s) => s.id === shelfId)
+    shelf?.aquariums.push(aq)
+    state.selectedAquariumId = aq.id
+    pushLog(`Открыт аквариум «${aq.name}» (${model.volume} л) за ${model.price}₽`, 'buy')
+    bump()
+  },
+  onRemoveAquarium(shelfId, aqId) {
+    const shelf = state.shelves.find((s) => s.id === shelfId)
+    if (!shelf) return
+    const aq = shelf.aquariums.find((a) => a.id === aqId)
+    if (!aq) return
+    shelf.aquariums = shelf.aquariums.filter((a) => a.id !== aqId)
+    if (state.selectedAquariumId === aqId) state.selectedAquariumId = null
+    pushLog(`Аквариум «${aq.name}» убран со стеллажа (${aq.fish.length} рыб удалено)`, 'warn')
+    bump()
+  },
+  onSelectAquarium(aqId) {
+    state.selectedAquariumId = aqId
+    bump()
+  },
+  onSelectStorage(storageId) {
+    state.selectedStorageId = storageId
+    bump()
+  },
+  onUpgradeDesign(aqId) {
+    const aq = aquariumById(aqId)
+    if (!aq || aq.designLevel >= MAX_DESIGN_LEVEL) return
+    const cost = designUpgradeCost(aq.designLevel)
+    if (state.money < cost) {
+      ui.flash('Не хватает денег на дизайн!')
+      return
+    }
+    state.money -= cost
+    aq.designLevel += 1
+    pushLog(`Дизайн «${aq.name}» повышен до ${aq.designLevel}`, 'info')
+    bump()
+  },
+  onWaterChange(aqId, key, value) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    aq.water[key] = value
+    bump()
+  },
+  onBuyEquipment(id) {
+    const def = EQUIPMENT[id]
     if (state.money < def.price) {
       ui.flash('Не хватает денег!')
       return
@@ -45,125 +200,108 @@ const ui = buildApp({
     }
     state.money -= def.price
     state.shop.rackInventory.push(id)
-    pushLog(`Куплен ${def.name} за ${def.price}₽`, 'buy')
+    pushLog(`Куплено оборудование ${def.name} за ${def.price}₽`, 'buy')
     bump()
   },
-  onInstallComponent(id, tankId) {
-    const tank = tankById(tankId)
-    if (!tank || tank.kind !== 'display') return
-    if (tank.components.includes(id)) return
-    if (tank.components.length >= COMPONENT_SLOTS_PER_TANK) {
-      ui.flash('Нет свободных слотов для оборудования!')
+  onInstallEquipment(id, aqId) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    if (aq.equipment.length >= 4) {
+      ui.flash('Нет свободных слотов!')
       return
     }
     const idx = state.shop.rackInventory.indexOf(id)
     if (idx < 0) {
-      ui.flash('Компонента нет на полке!')
+      ui.flash('Оборудования нет на полке!')
       return
     }
     state.shop.rackInventory.splice(idx, 1)
-    tank.components.push(id)
-    pushLog(`${COMPONENTS[id].name} установлен в «${tank.name}»`, 'info')
+    aq.equipment.push({ id, settings: Object.fromEntries(EQUIPMENT[id].params.map((p) => [p.id, p.default])) })
+    recalcWater(aq)
+    pushLog(`${EQUIPMENT[id].name} установлен в «${aq.name}»`, 'info')
     bump()
   },
-  onRemoveComponent(id, tankId) {
-    const tank = tankById(tankId)
-    if (!tank) return
-    tank.components = tank.components.filter((c) => c !== id)
+  onRemoveEquipment(id, aqId) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    aq.equipment = aq.equipment.filter((e) => e.id !== id)
     state.shop.rackInventory.push(id)
-    pushLog(`${COMPONENTS[id].name} снят с «${tank.name}»`, 'info')
+    recalcWater(aq)
+    pushLog(`${EQUIPMENT[id].name} снят с «${aq.name}»`, 'info')
     bump()
   },
-  onUpgradeDesign(tankId) {
-    const tank = tankById(tankId)
-    if (!tank) return
-    if (tank.designLevel >= MAX_DESIGN_LEVEL) return
-    const cost = designUpgradeCost(tank.designLevel)
-    if (state.money < cost) {
-      ui.flash('Не хватает денег на дизайн!')
-      return
-    }
-    state.money -= cost
-    tank.designLevel += 1
-    pushLog(`Дизайн «${tank.name}» повышен до ${tank.designLevel}`, 'info')
+  onEquipmentSetting(aqId, eqId, paramId, value) {
+    const aq = aquariumById(aqId)
+    const inst = aq?.equipment.find((e) => e.id === eqId)
+    if (!inst || !(paramId in inst.settings)) return
+    inst.settings[paramId] = value
+    recalcWater(aq!)
     bump()
   },
-  onSettingsChange(tankId, key, value) {
-    const tank = tankById(tankId)
-    if (!tank) return
-    tank[key] = value
-    bump()
-  },
-  onBuyShopItem(kind) {
-    const def = SHOP_ITEMS[kind]
+  onAddDecor(aqId, kind) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    const def = DECOR[kind]
     if (state.money < def.price) {
       ui.flash('Не хватает денег!')
       return
     }
     state.money -= def.price
-    if (kind === 'cashRegister') state.shop.cashRegister = true
-    else if (kind === 'restArea') state.shop.restAreas += 1
-    else if (kind === 'shelvingUnit') state.shop.shelvingUnits += 1
-    else if (kind === 'componentRack') state.shop.componentRacks += 1
-    pushLog(`Куплено: ${def.name} за ${def.price}₽`, 'buy')
+    const d: AquariumState['decor'][number] = {
+      id: uid('d'),
+      kind,
+      x: 0.08 + Math.random() * 0.84,
+      y: 0.08 + Math.random() * 0.6,
+    }
+    aq.decor.push(d)
+    if (kind === 'stone') aq.water.gh = Math.min(20, aq.water.gh + 0.5)
+    if (kind === 'driftwood') aq.water.ph = Math.max(5, aq.water.ph - 0.05)
+    pushLog(`Добавлена декорация «${def.name}» в «${aq.name}»`, 'info')
     bump()
   },
-  onAddTank(kind: TankKind) {
-    const isDisplay = kind === 'display'
-    if (isDisplay && displayTanks(state).length >= displaySlots(state.shop)) {
-      ui.flash('Нет свободных мест — купите стеллаж!')
+  onRemoveDecor(aqId, decorId) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    const d = aq.decor.find((x) => x.id === decorId)
+    if (!d) return
+    aq.decor = aq.decor.filter((x) => x.id !== decorId)
+    pushLog(`Декорация убрана из «${aq.name}»`, 'info')
+    bump()
+  },
+  onStockToAquarium(speciesId, aqId, count) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    const species = SPECIES_BY_ID[speciesId]
+    const room = canStock(aq, species, count)
+    const want = Math.min(count, room)
+    if (want <= 0) {
+      ui.flash('Нет места в аквариуме!')
       return
     }
-    const price = isDisplay ? DISPLAY_TANK_PRICE : STORAGE_TANK_PRICE
-    if (state.money < price) {
-      ui.flash('Не хватает денег!')
+    const taken = takeStock(speciesId, want)
+    if (taken <= 0) {
+      ui.flash('Нет рыб на складе!')
       return
     }
-    state.money -= price
-    const seq = state.tanks.filter((t) => t.kind === kind).length + 1
-    const tank: TankState = isDisplay
-      ? {
-          id: `t-${Date.now().toString(36)}`,
-          name: `Витрина ${seq}`,
-          kind: 'display',
-          volume: 100,
-          temperature: 25,
-          hardness: 8,
-          vegetation: 0.5,
-          designLevel: 0,
-          components: [],
-          fish: [],
-          stock: [],
-        }
-      : {
-          id: `s-${Date.now().toString(36)}`,
-          name: `Склад ${seq}`,
-          kind: 'storage',
-          volume: 0,
-          temperature: 0,
-          hardness: 0,
-          vegetation: 0,
-          designLevel: 0,
-          components: [],
-          fish: [],
-          stock: [],
-        }
-    state.tanks.push(tank)
-    if (isDisplay) state.selectedTankId = tank.id
-    else state.selectedStorageId = tank.id
-    pushLog(`Открыт «${tank.name}» за ${price}₽`, 'buy')
+    for (let i = 0; i < taken; i++) aq.fish.push(createFish(species))
+    pushLog(`Заселено ${taken} × ${species.name} в «${aq.name}»`, 'info')
     bump()
   },
-  onSelectDisplay(tankId) {
-    state.selectedTankId = tankId
+  onMoveToStorage(aqId, fishId) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    const fish = aq.fish.find((f) => f.id === fishId)
+    if (!fish) return
+    aq.fish = aq.fish.filter((f) => f.id !== fishId)
+    const storage = storageTank(state, state.selectedStorageId) ?? state.storage[0]
+    if (storage) {
+      addStock(storage, fish.speciesId, 1)
+      pushLog(`${SPECIES_BY_ID[fish.speciesId].name} убрана с аквариума в склад`, 'info')
+    }
     bump()
   },
-  onSelectStorage(tankId) {
-    state.selectedStorageId = tankId
-    bump()
-  },
-  onBuyFishToStorage(speciesId, storageTankId) {
-    const storage = tankById(storageTankId)
+  onBuyFishToStorage(speciesId, storageId) {
+    const storage = storageTank(state, storageId)
     if (!storage) return
     const species = SPECIES_BY_ID[speciesId]
     const price = buyPrice(species, state.market[speciesId] ?? 1)
@@ -176,8 +314,8 @@ const ui = buildApp({
     pushLog(`Куплена ${species.name} за ${price}₽ на склад`, 'buy')
     bump()
   },
-  onWholesaleSell(speciesId, storageTankId) {
-    const storage = tankById(storageTankId)
+  onWholesaleSell(speciesId, storageId) {
+    const storage = storageTank(state, storageId)
     if (!storage) return
     const item = storage.stock.find((s) => s.speciesId === speciesId)
     if (!item || item.count <= 0) return
@@ -187,39 +325,6 @@ const ui = buildApp({
     state.sales += item.count
     storage.stock = storage.stock.filter((s) => s.speciesId !== speciesId)
     pushLog(`Оптовая продажа ${item.count} × ${species.name} за ${revenue}₽`, 'sell')
-    bump()
-  },
-  onStockToDisplay(speciesId, displayTankId, count) {
-    const display = tankById(displayTankId)
-    if (!display || display.kind !== 'display') return
-    const species = SPECIES_BY_ID[speciesId]
-    const currentReq = totalRequiredVolume(display.fish, SPECIES_BY_ID)
-    const space = Math.floor((display.volume - currentReq) / species.minVolume)
-    const want = Math.min(count, space)
-    if (want <= 0) {
-      ui.flash('Нет места в витрине!')
-      return
-    }
-    const taken = takeStock(speciesId, want)
-    if (taken <= 0) {
-      ui.flash('Нет рыб на складе!')
-      return
-    }
-    for (let i = 0; i < taken; i++) display.fish.push(createFish(species))
-    pushLog(`Заселено ${taken} × ${species.name} в «${display.name}»`, 'info')
-    bump()
-  },
-  onMoveDisplayToStorage(tankId, fishId) {
-    const tank = tankById(tankId)
-    if (!tank) return
-    const fish = tank.fish.find((f) => f.id === fishId)
-    if (!fish) return
-    tank.fish = tank.fish.filter((f) => f.id !== fishId)
-    const storage = tankById(state.selectedStorageId) ?? storageTanks(state)[0]
-    if (storage) {
-      addStock(storage, fish.speciesId, 1)
-      pushLog(`${SPECIES_BY_ID[fish.speciesId].name} убрана с витрины в склад`, 'info')
-    }
     bump()
   },
   onFulfillOrder(orderId) {
@@ -238,10 +343,22 @@ const ui = buildApp({
     pushLog(`Продано ${order.qty} × ${SPECIES_BY_ID[order.speciesId].name} за ${revenue}₽`, 'sell')
     bump()
   },
+  onAddStorage() {
+    if (state.money < STORAGE_TANK_PRICE) {
+      ui.flash('Не хватает денег!')
+      return
+    }
+    state.money -= STORAGE_TANK_PRICE
+    const tank: TankState = { id: uid('s'), name: `Склад ${state.storage.length + 1}`, kind: 'storage', stock: [] }
+    state.storage.push(tank)
+    state.selectedStorageId = tank.id
+    pushLog(`Открыт склад «${tank.name}» за ${STORAGE_TANK_PRICE}₽`, 'buy')
+    bump()
+  },
   onTogglePause() {
     paused = !paused
   },
-  onSetSpeed(speed: number) {
+  onSetSpeed(speed) {
     timeScale = speed
     paused = false
   },
@@ -255,41 +372,34 @@ const canvas = document.getElementById('tank') as HTMLCanvasElement
 canvas.width = TANK.width
 canvas.height = TANK.height
 
-function tankById(id: string | null): TankState | undefined {
-  return state.tanks.find((t) => t.id === id)
-}
+const hallCanvas = document.getElementById('hall') as HTMLCanvasElement
+hallCanvas.width = HALL_WIDTH
+hallCanvas.height = HALL_HEIGHT
 
-function displayTanks(s: GameState): TankState[] {
-  return s.tanks.filter((t) => t.kind === 'display')
-}
-
-function storageTanks(s: GameState): TankState[] {
-  return s.tanks.filter((t) => t.kind === 'storage')
-}
-
-function addStock(tank: TankState, speciesId: string, count: number): void {
-  const item = tank.stock.find((s) => s.speciesId === speciesId)
-  if (item) item.count += count
-  else tank.stock.push({ speciesId, count })
-}
-
-function takeStock(speciesId: string, n: number): number {
-  let need = n
-  for (const tank of storageTanks(state)) {
-    if (need <= 0) break
-    const item = tank.stock.find((s) => s.speciesId === speciesId)
-    if (!item || item.count <= 0) continue
-    const take = Math.min(item.count, need)
-    item.count -= take
-    need -= take
-    if (item.count <= 0) tank.stock = tank.stock.filter((s) => s.speciesId !== speciesId)
+hallCanvas.addEventListener('click', (e) => {
+  const rect = hallCanvas.getBoundingClientRect()
+  const sx = ((e.clientX - rect.left) / rect.width) * HALL_WIDTH
+  const sy = ((e.clientY - rect.top) / rect.height) * HALL_HEIGHT
+  const { shelves } = layoutHall(state)
+  for (const shelf of shelves) {
+    for (const tank of shelf.tanks) {
+      if (sx >= tank.x && sx <= tank.x + tank.w && sy >= tank.y && sy <= tank.y + tank.h) {
+        state.selectedAquariumId = tank.aqId
+        bump()
+        ui.selectTab('aquarium')
+        return
+      }
+    }
   }
-  return n - need
+})
+
+function aquariumById(id: string | null): AquariumState | undefined {
+  return allAquariums(state).find((a) => a.id === id)
 }
 
 function createFish(species: FishSpecies): FishInstance {
   return {
-    id: `f${state.epoch}-${Math.random().toString(36).slice(2, 8)}`,
+    id: uid('f'),
     speciesId: species.id,
     health: 100,
     x: 40 + Math.random() * (TANK.width - 80),
@@ -311,41 +421,28 @@ function pushLog(text: string, kind: LogKind): void {
 function moveFish(fish: FishInstance, dt: number): void {
   fish.x += fish.vx * dt
   fish.y += fish.vy * dt
-  if (fish.x < 16) {
-    fish.x = 16
-    fish.vx = Math.abs(fish.vx)
-  }
-  if (fish.x > TANK.width - 16) {
-    fish.x = TANK.width - 16
-    fish.vx = -Math.abs(fish.vx)
-  }
-  if (fish.y < 16) {
-    fish.y = 16
-    fish.vy = Math.abs(fish.vy)
-  }
-  if (fish.y > TANK.height - 30) {
-    fish.y = TANK.height - 30
-    fish.vy = -Math.abs(fish.vy)
-  }
+  if (fish.x < 16) { fish.x = 16; fish.vx = Math.abs(fish.vx) }
+  if (fish.x > TANK.width - 16) { fish.x = TANK.width - 16; fish.vx = -Math.abs(fish.vx) }
+  if (fish.y < 16) { fish.y = 16; fish.vy = Math.abs(fish.vy) }
+  if (fish.y > TANK.height - 30) { fish.y = TANK.height - 30; fish.vy = -Math.abs(fish.vy) }
   fish.vx += (Math.random() - 0.5) * 4 * dt
   fish.vy += (Math.random() - 0.5) * 4 * dt
-  const speed = 40
   const mag = Math.hypot(fish.vx, fish.vy)
-  if (mag > speed) {
-    fish.vx = (fish.vx / mag) * speed
-    fish.vy = (fish.vy / mag) * speed
+  if (mag > 40) {
+    fish.vx = (fish.vx / mag) * 40
+    fish.vy = (fish.vy / mag) * 40
   }
 }
 
-function updateFish(dt: number): void {
-  for (const tank of state.tanks) {
-    if (tank.kind !== 'display') continue
-    const required = totalRequiredVolume(tank.fish, SPECIES_BY_ID)
-    const crowded = required > tank.volume
+function updateAquariums(dt: number): void {
+  for (const aq of allAquariums(state)) {
+    recalcWater(aq)
+    const required = usedVolume(aq, SPECIES_BY_ID)
+    const crowded = required > aq.volume
     const dead = new Set<string>()
-    for (const fish of tank.fish) {
+    for (const fish of aq.fish) {
       const species = SPECIES_BY_ID[fish.speciesId]
-      updateHealth(fish, species, tank, crowded, dt)
+      updateHealth(fish, species, aq, crowded, dt)
       if (fish.health <= 0) {
         dead.add(fish.id)
         continue
@@ -353,18 +450,16 @@ function updateFish(dt: number): void {
       moveFish(fish, dt)
     }
     if (dead.size > 0) {
-      tank.fish = tank.fish.filter((f) => !dead.has(f.id))
-      pushLog(`${dead.size} рыб погибло в «${tank.name}» из-за плохих условий!`, 'warn')
+      aq.fish = aq.fish.filter((f) => !dead.has(f.id))
+      pushLog(`${dead.size} рыб погибло в «${aq.name}» из-за плохих условий!`, 'warn')
       bump()
     }
   }
 }
 
 function tryArrive(): void {
-  const hasAnything = state.tanks.some(
-    (t) => (t.kind === 'storage' && t.stock.some((i) => i.count > 0)) || (t.kind === 'display' && t.fish.length > 0),
-  )
-  if (!hasAnything) {
+  const anyFishOrStock = allAquariums(state).some((a) => a.fish.length > 0) || state.storage.some((t) => t.stock.some((i) => i.count > 0))
+  if (!anyFishOrStock) {
     state.nextVisitorIn = 60
     return
   }
@@ -372,11 +467,7 @@ function tryArrive(): void {
   if (order) {
     state.orders.push(order)
     state.totalVisitors += 1
-    const species = SPECIES_BY_ID[order.speciesId]
-    pushLog(
-      `Покупатель хочет ${species.name} ×${order.qty} (${order.kind === 'demand' ? 'по спросу' : 'по витрине'})`,
-      'info',
-    )
+    pushLog(`Покупатель хочет ${SPECIES_BY_ID[order.speciesId].name} ×${order.qty} (${order.kind === 'demand' ? 'по спросу' : 'по витрине'})`, 'info')
   }
   state.nextVisitorIn = arrivalInterval(shopAttractiveness(state), state.shop.cashRegister)
   bump()
@@ -387,25 +478,18 @@ function updateOrders(dt: number): void {
   for (const o of state.orders) o.timeLeft -= dt
   const before = state.orders.length
   state.orders = state.orders.filter((o) => {
-    if (o.timeLeft <= 0) {
-      expired++
-      return false
-    }
+    if (o.timeLeft <= 0) { expired++; return false }
     return true
   })
-  if (expired > 0) {
-    pushLog(`${expired} заказ(а) не выполнено — покупатели ушли`, 'warn')
-  }
+  if (expired > 0) pushLog(`${expired} заказ(а) не выполнено — покупатели ушли`, 'warn')
   if (before !== state.orders.length || expired > 0) bump()
 }
 
 function tick(dt: number): void {
   state.daySeconds += dt
   if (state.daySeconds >= DAY_DURATION_SECONDS) advanceDay()
-
-  updateFish(dt)
+  updateAquariums(dt)
   updateOrders(dt)
-
   state.nextVisitorIn -= dt
   if (state.nextVisitorIn <= 0) tryArrive()
 }
@@ -427,10 +511,11 @@ function frame(now: number): void {
   const dt = paused ? 0 : rawDt * timeScale
   tick(dt)
 
-  const selected = tankById(state.selectedTankId)
-  if (selected && selected.kind === 'display') {
-    renderTank(canvas, selected, SPECIES_BY_ID)
-  }
+  const selected = aquariumById(state.selectedAquariumId)
+  if (selected) renderAquarium(canvas, selected, SPECIES_BY_ID)
+
+  const hctx = hallCanvas.getContext('2d')
+  if (hctx) drawHall(hctx, state, state.selectedAquariumId, now / 1000)
 
   ui.update(state, shopAttractiveness(state), timeScale, paused)
   requestAnimationFrame(frame)

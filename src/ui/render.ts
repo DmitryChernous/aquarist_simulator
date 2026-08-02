@@ -1,10 +1,8 @@
-import type { FishInstance, FishSpecies, TankState } from '../types'
-
-const RNG_SEED_OFFSET = 13
+import type { AquariumState, FishInstance, FishSpecies } from '../types'
 
 function drawFish(ctx: CanvasRenderingContext2D, fish: FishInstance, species: FishSpecies): void {
   const t = performance.now() / 1000
-  const len = 6 + species.sizeCm * 1.6
+  const len = 6 + species.sizeCm * 1.2
   const th = len * 0.5
   const dir = fish.vx >= 0 ? 1 : -1
 
@@ -36,47 +34,57 @@ function drawFish(ctx: CanvasRenderingContext2D, fish: FishInstance, species: Fi
   ctx.globalAlpha = 1
 }
 
-function drawPlant(ctx: CanvasRenderingContext2D, index: number, w: number, h: number): void {
-  const x = (index * 37 + RNG_SEED_OFFSET) % w
-  const height = 26 + ((index * 53) % 40)
-  const color = index % 2 === 0 ? '#1e7a46' : '#2c9a55'
-
-  ctx.strokeStyle = color
-  ctx.lineWidth = 2
-  ctx.beginPath()
-  ctx.moveTo(x, h - 14)
-  ctx.quadraticCurveTo(x + 6, h - 14 - height / 2, x, h - 14 - height)
-  ctx.stroke()
-
-  ctx.fillStyle = color
-  for (let i = 0; i < 3; i++) {
-    const ly = h - 16 - (height * i) / 3
+export function drawDecor(ctx: CanvasRenderingContext2D, kind: string, x: number, y: number): void {
+  if (kind === 'plant') {
+    ctx.strokeStyle = '#1e7a46'
+    ctx.lineWidth = 2
     ctx.beginPath()
-    ctx.ellipse(x + 4, ly, 7, 2.5, 0.3, 0, Math.PI * 2)
-    ctx.fill()
+    ctx.moveTo(x, y)
+    ctx.quadraticCurveTo(x + 6, y - 14, x, y - 28)
+    ctx.stroke()
+    ctx.fillStyle = '#2c9a55'
+    for (let i = 0; i < 3; i++) {
+      const ly = y - 4 - i * 9
+      ctx.beginPath()
+      ctx.ellipse(x + 3, ly, 5, 2.2, 0.3, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.ellipse(x - 3, ly + 4, 4, 1.8, -0.3, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  } else if (kind === 'stone') {
+    ctx.fillStyle = '#5a6b78'
     ctx.beginPath()
-    ctx.ellipse(x - 4, ly + 5, 6, 2.2, -0.3, 0, Math.PI * 2)
+    ctx.moveTo(x - 14, y)
+    ctx.lineTo(x - 8, y - 14)
+    ctx.lineTo(x + 8, y - 16)
+    ctx.lineTo(x + 14, y)
+    ctx.closePath()
     ctx.fill()
+    ctx.fillStyle = '#78858f'
+    ctx.beginPath()
+    ctx.arc(x - 4, y - 8, 4, 0, Math.PI * 2)
+    ctx.fill()
+  } else {
+    ctx.strokeStyle = '#7a5230'
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    ctx.moveTo(x - 8, y)
+    ctx.quadraticCurveTo(x + 4, y - 10, x + 8, y - 24)
+    ctx.lineTo(x + 11, y - 26)
+    ctx.stroke()
+    ctx.strokeStyle = '#8a6040'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(x - 2, y)
+    ctx.quadraticCurveTo(x + 2, y - 8, x, y - 16)
+    ctx.stroke()
   }
 }
 
-function drawDecor(ctx: CanvasRenderingContext2D, index: number, h: number): void {
-  const x = 60 + index * 150
-  ctx.fillStyle = index % 2 === 0 ? '#5a6b78' : '#4d5c68'
-  ctx.beginPath()
-  ctx.moveTo(x - 34, h - 16)
-  ctx.quadraticCurveTo(x, h - 16 - 48, x + 34, h - 16)
-  ctx.closePath()
-  ctx.fill()
-  ctx.fillStyle = '#78858f'
-  ctx.beginPath()
-  ctx.arc(x - 8, h - 22, 8, 0, Math.PI * 2)
-  ctx.fill()
-}
-
-export function renderTank(
+export function renderAquarium(
   canvas: HTMLCanvasElement,
-  tank: TankState,
+  aq: AquariumState,
   speciesById: Record<string, FishSpecies>,
 ): void {
   const ctx = canvas.getContext('2d')
@@ -99,14 +107,23 @@ export function renderTank(
     ctx.fill()
   }
 
-  const plantCount = Math.round(tank.vegetation * 24)
-  for (let i = 0; i < plantCount; i++) drawPlant(ctx, i, w, h)
+  for (const d of aq.decor) drawDecor(ctx, d.kind, Math.max(16, d.x * (w - 32)) | 0, h - 16 - Math.max(0, d.y * (h - 40)) | 0)
 
-  for (let d = 0; d < tank.designLevel; d++) drawDecor(ctx, d, h)
+  for (let i = 0; i < aq.designLevel; i++) {
+    const x = 40 + i * 90
+    ctx.fillStyle = i % 2 === 0 ? '#5a6b78' : '#4d5c68'
+    ctx.beginPath()
+    ctx.moveTo(x - 34, h - 16)
+    ctx.quadraticCurveTo(x, h - 16 - 48, x + 34, h - 16)
+    ctx.closePath()
+    ctx.fill()
+  }
 
-  for (const fish of tank.fish) {
+  for (const fish of aq.fish) {
     const species = speciesById[fish.speciesId]
     if (!species) continue
     drawFish(ctx, fish, species)
   }
+
+  ctx.globalAlpha = 1
 }

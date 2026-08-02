@@ -164,6 +164,16 @@ body {
   display: block;
 }
 
+.hall-canvas {
+  width: 100%;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: #efe9dc;
+  display: block;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+
 .tank-status {
   background: var(--panel);
   border: 1px solid var(--border);

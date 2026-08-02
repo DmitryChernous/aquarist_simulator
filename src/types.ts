@@ -9,36 +9,154 @@ export interface FishSpecies {
   minVolume: number
   tempMin: number
   tempMax: number
-  hardMin: number
-  hardMax: number
+  phMin: number
+  phMax: number
+  ghMin: number
+  ghMax: number
+  o2Min: number
+  o2Max: number
+  lightMin: number
+  lightMax: number
   vegMin: number
   vegMax: number
   schooling: boolean
   appeal: number
 }
 
-export type ComponentId = 'thermometer' | 'heater' | 'filter' | 'light' | 'pump'
+// --- Вода (расширяемый реестр параметров) ---
+export type WaterParamId =
+  | 'temperature'
+  | 'ph'
+  | 'gh'
+  | 'o2'
+  | 'light'
+  // будущие (хардкор), зарегистрированы для расширения:
+  | 'nh3'
+  | 'no2'
+  | 'no3'
+  | 'po4'
+  | 'kh'
+  | 'cl'
+  | 'co2'
+  | 'fe'
+  | 'k'
+  | 'ca'
+  | 'cu'
+  | 'mg'
 
-export interface ComponentDef {
-  id: ComponentId
+export interface WaterParamDef {
+  id: WaterParamId
+  name: string
+  unit: string
+  min: number
+  max: number
+  step: number
+  editable: boolean // управляется напрямую слайдером сейчас
+  derived: boolean // вычисляется из оборудования (o2/light)
+  casual: boolean // включено в текущий (casual) режим; false — хардкор, скрыто
+}
+
+export interface WaterLevels {
+  temperature: number
+  ph: number
+  gh: number
+  o2: number
+  light: number
+  // будущие производные/токсики оставляем вне базового объекта,
+  // а расширяем через WATER_PARAMS: Record в будущем хардкор-режиме
+}
+
+// --- Оборудование ---
+export type EquipmentId = 'heater' | 'thermometer' | 'filter' | 'airPump' | 'light' | 'co2'
+
+export interface EquipmentParamDef {
+  id: string
+  label: string
+  min: number
+  max: number
+  step: number
+  unit: string
+  default: number
+}
+
+export interface EquipmentDef {
+  id: EquipmentId
   name: string
   price: number
   desc: string
+  params: EquipmentParamDef[]
 }
 
-export type TankKind = 'display' | 'storage'
+export interface EquipmentInst {
+  id: EquipmentId
+  settings: Record<string, number>
+}
 
+// --- Декорация ---
+export type DecorKind = 'plant' | 'stone' | 'driftwood'
+
+export interface Decoration {
+  id: string
+  kind: DecorKind
+  x: number
+  y: number
+}
+
+export interface DecorDef {
+  kind: DecorKind
+  name: string
+  price: number
+  attract: number
+  desc: string
+}
+
+// --- Аквариум (витрина) ---
+export interface AquariumState {
+  id: string
+  name: string
+  shelfId: string | null
+  slabId: string | null
+  w: number
+  d: number
+  h: number
+  volume: number
+  water: WaterLevels
+  decor: Decoration[]
+  fish: FishInstance[]
+  equipment: EquipmentInst[]
+  designLevel: number
+}
+
+// --- Стеллаж ---
+export interface ShelfSlab {
+  id: string
+  width: number
+  depth: number
+  height: number
+  slot: number
+}
+
+export interface ShelfState {
+  id: string
+  name: string
+  pos: { x: number; y: number }
+  slabs: ShelfSlab[]
+  loadCapacityL: number
+  aquariums: AquariumState[]
+}
+
+export interface ShelfSpec {
+  name: string
+  price: number
+  slabs: Omit<ShelfSlab, 'id'>[]
+  loadCapacityL: number
+}
+
+// --- Хранение (склад / «на продажу») ---
 export interface TankState {
   id: string
   name: string
-  kind: TankKind
-  volume: number
-  temperature: number
-  hardness: number
-  vegetation: number
-  designLevel: number
-  components: ComponentId[]
-  fish: FishInstance[]
+  kind: 'storage'
   stock: StockItem[]
 }
 
@@ -60,9 +178,8 @@ export interface FishInstance {
 export interface ShopState {
   cashRegister: boolean
   restAreas: number
-  shelvingUnits: number
   componentRacks: number
-  rackInventory: ComponentId[]
+  rackInventory: EquipmentId[]
 }
 
 export type OrderKind = 'demand' | 'display'
@@ -87,10 +204,11 @@ export interface LogEntry {
 export interface GameState {
   money: number
   shop: ShopState
-  tanks: TankState[]
+  shelves: ShelfState[]
+  storage: TankState[]
   market: Record<string, number>
   orders: Order[]
-  selectedTankId: string | null
+  selectedAquariumId: string | null
   selectedStorageId: string | null
   day: number
   daySeconds: number

@@ -1,39 +1,40 @@
-import type { GameState, Order, TankState } from '../types'
+import type { AquariumState, GameState, Order, TankState } from '../types'
 import { MAX_DESIGN_LEVEL } from '../data/aquarium'
 import { FISH_SPECIES, SPECIES_BY_ID } from '../data/fish'
+import { allAquariums } from './aquarium'
 
-export function tankAttractiveness(tank: TankState): number {
-  const design = (tank.designLevel / MAX_DESIGN_LEVEL) * 30
-  const fish = tank.fish
+export function tankAttractiveness(aq: AquariumState): number {
+  const design = (aq.designLevel / MAX_DESIGN_LEVEL) * 25
+  const fish = aq.fish
   const healthAvg = fish.length ? fish.reduce((acc, f) => acc + f.health, 0) / fish.length : 0
-  const healthPart = (healthAvg / 100) * 30
+  const healthPart = (healthAvg / 100) * 25
   const distinct = new Set(fish.map((f) => f.speciesId)).size
-  const diversity = Math.min(distinct / 4, 1) * 20
+  const diversity = Math.min(distinct / 4, 1) * 15
 
   let appeal = 0
-  for (const f of fish) {
-    appeal += SPECIES_BY_ID[f.speciesId].appeal * (f.health / 100)
-  }
-  const appealPart = Math.min(appeal / 150, 1) * 20
+  for (const f of fish) appeal += SPECIES_BY_ID[f.speciesId].appeal * (f.health / 100)
+  const appealPart = Math.min(appeal / 150, 1) * 15
 
-  const compBonus = Math.min(
-    tank.components.reduce((acc, c) => acc + (c === 'thermometer' ? 3 : 2), 0),
+  const decorPart = Math.min(aq.decor.reduce((acc, d) => acc + { plant: 4, stone: 3, driftwood: 6 }[d.kind], 0), 20)
+
+  const eqBonus = Math.min(
+    aq.equipment.reduce((acc, e) => acc + (e.id === 'thermometer' ? 3 : 2), 0),
     15,
   )
 
-  return Math.max(0, Math.min(100, Math.round(design + healthPart + diversity + appealPart + compBonus)))
+  return Math.max(0, Math.min(100, Math.round(design + healthPart + diversity + appealPart + decorPart + eqBonus)))
 }
 
 export function shopAttractiveness(state: GameState): number {
-  const displays = state.tanks.filter((t) => t.kind === 'display')
+  const displays = allAquariums(state)
   if (displays.length === 0) return 0
 
-  const avgTank = displays.reduce((acc, t) => acc + tankAttractiveness(t), 0) / displays.length
+  const avgTank = displays.reduce((acc, a) => acc + tankAttractiveness(a), 0) / displays.length
   const speciesSet = new Set<string>()
-  for (const t of displays) for (const f of t.fish) speciesSet.add(f.speciesId)
+  for (const a of displays) for (const f of a.fish) speciesSet.add(f.speciesId)
   const diversity = Math.min(speciesSet.size / 6, 1) * 100
   const equipment = Math.min(
-    state.shop.restAreas * 8 + state.shop.componentRacks * 3 + state.shop.shelvingUnits * 2,
+    state.shop.restAreas * 8 + state.shop.componentRacks * 3 + state.shelves.length * 2,
     25,
   )
 
@@ -48,9 +49,8 @@ export function conversionChance(state: GameState): number {
   const shopAtt = shopAttractiveness(state)
   let healthSum = 0
   let healthCount = 0
-  for (const t of state.tanks) {
-    if (t.kind !== 'display') continue
-    for (const f of t.fish) {
+  for (const a of allAquariums(state)) {
+    for (const f of a.fish) {
       healthSum += f.health
       healthCount++
     }
@@ -62,10 +62,9 @@ export function conversionChance(state: GameState): number {
 export function speciesDisplayScore(state: GameState, speciesId: string): number {
   let sum = 0
   let count = 0
-  for (const tank of state.tanks) {
-    if (tank.kind !== 'display') continue
-    const tAtt = tankAttractiveness(tank)
-    for (const f of tank.fish) {
+  for (const a of allAquariums(state)) {
+    const tAtt = tankAttractiveness(a)
+    for (const f of a.fish) {
       if (f.speciesId !== speciesId) continue
       sum += (f.health / 100) * (tAtt / 100)
       count++
@@ -98,15 +97,9 @@ export function generateOrder(state: GameState): Order | null {
   if (Math.random() >= conversionChance(state)) return null
 
   const inStock = new Set<string>()
-  for (const t of state.tanks) {
-    if (t.kind !== 'storage') continue
-    for (const item of t.stock) if (item.count > 0) inStock.add(item.speciesId)
-  }
+  for (const t of allStorage2(state)) for (const item of t.stock) if (item.count > 0) inStock.add(item.speciesId)
   const onDisplay = new Set<string>()
-  for (const t of state.tanks) {
-    if (t.kind !== 'display') continue
-    for (const f of t.fish) onDisplay.add(f.speciesId)
-  }
+  for (const a of allAquariums(state)) for (const f of a.fish) onDisplay.add(f.speciesId)
   if (inStock.size === 0 && onDisplay.size === 0) return null
 
   const determined = onDisplay.size === 0 ? true : Math.random() < 0.5
@@ -144,4 +137,8 @@ export function generateOrder(state: GameState): Order | null {
     timeLeft: 18 + Math.random() * 22,
     kind,
   }
+}
+
+function allStorage2(state: GameState): TankState[] {
+  return state.storage
 }

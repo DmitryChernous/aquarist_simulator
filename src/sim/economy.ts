@@ -1,4 +1,5 @@
 import type { FishSpecies, GameState } from '../types'
+import { allAquariums } from './aquarium'
 
 const DAILY_RENT = 50
 
@@ -20,24 +21,20 @@ export function stockTotal(stock: { speciesId: string; count: number }[]): numbe
 
 export function availableStock(state: GameState, speciesId: string): number {
   let n = 0
-  for (const tank of state.tanks) {
-    if (tank.kind !== 'storage') continue
-    for (const item of tank.stock) {
-      if (item.speciesId === speciesId) n += item.count
-    }
+  for (const tank of state.storage) {
+    for (const item of tank.stock) if (item.speciesId === speciesId) n += item.count
   }
   return n
 }
 
 export function dailyUpkeep(state: GameState, speciesById: Record<string, FishSpecies>): number {
   let cost = DAILY_RENT
-  for (const tank of state.tanks) {
-    for (const fish of tank.fish) {
-      cost += speciesById[fish.speciesId].sizeCm * 0.1
-    }
-    for (const item of tank.stock) {
-      cost += speciesById[item.speciesId].sizeCm * 0.05 * item.count
-    }
+  for (const aq of allAquariums(state)) {
+    for (const fish of aq.fish) cost += speciesById[fish.speciesId].sizeCm * 0.1
+    for (const _eq of aq.equipment) cost += 4
+  }
+  for (const tank of state.storage) {
+    for (const item of tank.stock) cost += speciesById[item.speciesId].sizeCm * 0.05 * item.count
   }
   return Math.round(cost)
 }
