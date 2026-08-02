@@ -35,7 +35,7 @@ export interface UIActions {
   onReset(): void
 }
 
-type TabName = 'zal' | 'aquarium' | 'storage' | 'store'
+type TabName = 'zal' | 'aquarium' | 'storage' | 'store' | 'orders' | 'furni'
 type WaterKey = 'temperature' | 'ph' | 'gh'
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -146,6 +146,7 @@ export function buildApp(actions: UIActions) {
   const shopEquipment = app.querySelector<HTMLDivElement>('.shop-equipment')!
   const shelfStore = app.querySelector<HTMLDivElement>('.shelf-store')!
   const hallList = app.querySelector<HTMLDivElement>('.hall-list')!
+  const hallNav = app.querySelector<HTMLDivElement>('.hall-nav')!
   const ordersPanel = app.querySelector<HTMLDivElement>('.orders-panel')!
 
   const storageSelect = app.querySelector<HTMLSelectElement>('#storageSelect')!
@@ -206,6 +207,7 @@ export function buildApp(actions: UIActions) {
     if (state.epoch !== epoch) {
       epoch = state.epoch
       renderZal(state)
+      renderFurn(state)
       renderOrders(state)
       renderAquarium(state)
       renderStorage(state)
@@ -215,45 +217,34 @@ export function buildApp(actions: UIActions) {
   }
 
   function renderZal(state: GameState): void {
-    const shop = state.shop
-    shopEquipment.innerHTML = ''
-    const PRICES = { cashRegister: 300, restArea: 250, componentRack: 150 }
-    const items: { key: 'cashRegister' | 'restArea' | 'componentRack'; label: string; state: string }[] = [
-      { key: 'cashRegister', label: 'Касса', state: shop.cashRegister ? 'Установлена' : 'Нет' },
-      { key: 'restArea', label: `Зона отдыха ×${shop.restAreas}`, state: '' },
-      { key: 'componentRack', label: `Полка комплектующих ×${shop.componentRacks}`, state: '' },
+    hallNav.innerHTML = ''
+    const targets: [TabName, string, string][] = [
+      ['aquarium', 'Аквариум', 'редактор среды'],
+      ['storage', 'Склад', 'инвентарь'],
+      ['store', 'Магазин', 'закупка рыб'],
+      ['orders', 'Заказы', 'клиенты'],
+      ['furni', 'Обустройство', 'мебель и стеллажи'],
     ]
-    for (const item of items) {
-      const card = el('div', 'shop-card')
-      card.append(el('strong', 'shop-name', item.label), el('div', 'shop-state', item.state))
-      if (!(item.key === 'cashRegister' && shop.cashRegister)) {
-        const btn = el('button', 'btn small', `Купить — ${PRICES[item.key]}₽`)
-        btn.disabled = state.money < PRICES[item.key]
-        btn.addEventListener('click', () => actions.onBuyShopItem(item.key))
-        card.append(btn)
-      }
-      shopEquipment.append(card)
-    }
-
-    shelfStore.innerHTML = ''
-    shelfStore.append(el('div', 'comp-hint', 'Стеллажи (стоимость от числа полок и грузоподъёмности):'))
-    for (const specId of Object.keys(SHELVES)) {
-      const spec = SHELVES[specId as keyof typeof SHELVES]
-      const card = el('div', 'shop-card')
-      card.append(
-        el('strong', 'shop-name', spec.name),
-        el('div', 'shop-desc', `${spec.slabs.length} полки · до ${spec.loadCapacityL} л`),
-      )
-      const btn = el('button', 'btn small', `Купить — ${spec.price}₽`)
-      btn.disabled = state.money < spec.price
-      btn.addEventListener('click', () => actions.onAddShelf(specId))
-      card.append(btn)
-      shelfStore.append(card)
+    for (const [tab, label, hint] of targets) {
+      const b = el('button', 'btn small hall-nav-btn', label)
+      b.title = hint
+      b.addEventListener('click', () => switchTab(app, tab))
+      hallNav.append(b)
     }
 
     hallList.innerHTML = ''
-    if (state.shelves.length === 0) hallList.append(el('div', 'empty', 'Зал пуст. Купите стеллаж выше.'))
+    if (state.shelves.length === 0) {
+      const empty = el('div', 'empty hall-empty')
+      const go = el('button', 'btn small', 'Купить стеллаж в «Обустройстве»')
+      go.addEventListener('click', () => switchTab(app, 'furni'))
+      empty.append(el('span', '', 'Зал пуст. Купите стеллаж, затем добавьте аквариум на полку.'), go)
+      hallList.append(empty)
+    }
     for (const shelf of state.shelves) {
+      if (shelf.aquariums.length === 0) {
+        const empty = el('div', 'comp-hint', `«${shelf.name}» пуст. Добавьте аквариум на полку ниже или во «Обустройстве».`)
+        hallList.append(empty)
+      }
       const card = el('div', 'shelf-card')
       const head = el('div', 'shelf-head')
       head.append(
@@ -292,6 +283,44 @@ export function buildApp(actions: UIActions) {
       }
       card.append(body)
       hallList.append(card)
+    }
+  }
+
+  function renderFurn(state: GameState): void {
+    const shop = state.shop
+    shopEquipment.innerHTML = ''
+    const PRICES = { cashRegister: 300, restArea: 250, componentRack: 150 }
+    const items: { key: 'cashRegister' | 'restArea' | 'componentRack'; label: string; state: string }[] = [
+      { key: 'cashRegister', label: 'Касса', state: shop.cashRegister ? 'Установлена' : 'Нет' },
+      { key: 'restArea', label: `Зона отдыха ×${shop.restAreas}`, state: '' },
+      { key: 'componentRack', label: `Полка комплектующих ×${shop.componentRacks}`, state: '' },
+    ]
+    for (const item of items) {
+      const card = el('div', 'shop-card')
+      card.append(el('strong', 'shop-name', item.label), el('div', 'shop-state', item.state))
+      if (!(item.key === 'cashRegister' && shop.cashRegister)) {
+        const btn = el('button', 'btn small', `Купить — ${PRICES[item.key]}₽`)
+        btn.disabled = state.money < PRICES[item.key]
+        btn.addEventListener('click', () => actions.onBuyShopItem(item.key))
+        card.append(btn)
+      }
+      shopEquipment.append(card)
+    }
+
+    shelfStore.innerHTML = ''
+    shelfStore.append(el('div', 'comp-hint', 'Стеллажи (стоимость от числа полок и грузоподъёмности):'))
+    for (const specId of Object.keys(SHELVES)) {
+      const spec = SHELVES[specId as keyof typeof SHELVES]
+      const card = el('div', 'shop-card')
+      card.append(
+        el('strong', 'shop-name', spec.name),
+        el('div', 'shop-desc', `${spec.slabs.length} полки · до ${spec.loadCapacityL} л`),
+      )
+      const btn = el('button', 'btn small', `Купить — ${spec.price}₽`)
+      btn.disabled = state.money < spec.price
+      btn.addEventListener('click', () => actions.onAddShelf(specId))
+      card.append(btn)
+      shelfStore.append(card)
     }
   }
 
@@ -635,6 +664,8 @@ function buildLayout(): HTMLElement {
     tabButton('aquarium', 'Аквариум', false),
     tabButton('storage', 'Склад', false),
     tabButton('store', 'Магазин', false),
+    tabButton('orders', 'Заказы', false),
+    tabButton('furni', 'Обустройство', false),
     el('button', 'tab-btn disabled', 'Разводня'),
     el('button', 'tab-btn disabled', 'Опт'),
     el('button', 'tab-btn disabled', 'Сервис'),
@@ -645,15 +676,27 @@ function buildLayout(): HTMLElement {
   const zalTab = el('section', 'tab active')
   zalTab.id = 'tab-zal'
   zalTab.append(
-    el('h2', 'sec-title', 'Оборудование зала'),
+    el('h2', 'sec-title', 'Выставочный зал'),
+    buildHallCanvas(),
+    el('div', 'hall-nav'),
+    el('h2', 'sec-title', 'Стеллажи и аквариумы'),
+    el('div', 'hall-list'),
+  )
+
+  const ordersTab = el('section', 'tab')
+  ordersTab.id = 'tab-orders'
+  ordersTab.append(
+    el('h2', 'sec-title', 'Заказы покупателей'),
+    el('div', 'orders-panel'),
+  )
+
+  const furnTab = el('section', 'tab')
+  furnTab.id = 'tab-furn'
+  furnTab.append(
+    el('h2', 'sec-title', 'Обустройство магазина'),
     el('div', 'shop-equipment'),
     el('h2', 'sec-title', 'Купить стеллаж'),
     el('div', 'shelf-store'),
-    el('h2', 'sec-title', 'Заказы покупателей'),
-    el('div', 'orders-panel'),
-    el('h2', 'sec-title', 'Выставочный зал'),
-    buildHallCanvas(),
-    el('div', 'hall-list'),
   )
 
   const aquariumTab = el('section', 'tab')
@@ -714,7 +757,7 @@ function buildLayout(): HTMLElement {
   storeBar.append(storeDest)
   storeTab.append(storeBar, el('div', 'store-grid'))
 
-  main.append(zalTab, aquariumTab, storageTab, storeTab)
+  main.append(zalTab, aquariumTab, storageTab, storeTab, ordersTab, furnTab)
 
   const footer = el('footer', 'log-panel')
   footer.append(el('h3', '', 'Журнал событий'))
