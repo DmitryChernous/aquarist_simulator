@@ -12,7 +12,7 @@ import { clearSave, loadState, saveState } from './save'
 import { renderAquarium } from './ui/render'
 import { drawHall, layoutHall, HALL_HEIGHT, HALL_WIDTH } from './ui/renderHall'
 import { buildApp } from './ui/panels'
-import type { AquariumState, FishInstance, FishSpecies, GameState, LogKind, ShelfState, TankState } from './types'
+import type { AquariumState, EquipmentId, FishInstance, FishSpecies, GameState, LogKind, ShelfState, TankState } from './types'
 
 const TANK = { width: 960, height: 420 }
 const LOG_LIMIT = 40
@@ -280,6 +280,47 @@ const ui = buildApp({
     if (!inst || !(paramId in inst.settings)) return
     inst.settings[paramId] = value
     recalcWater(aq!)
+    bump()
+  },
+  onSellEquipment(equipId: EquipmentId, aqId: string) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    const idx = aq.equipment.findIndex((e) => e.id === equipId)
+    if (idx < 0) return
+    const def = EQUIPMENT[equipId]
+    aq.equipment.splice(idx, 1)
+    const refund = Math.floor(def.price * 0.5)
+    state.money += refund
+    recalcWater(aq)
+    pushLog(`${def.name} продан с «${aq.name}» за ${refund}₽`, 'sell')
+    bump()
+  },
+  onMaintain(aqId: string, kind: 'water' | 'bacteria' | 'clean' | 'temp' | 'light', value?: number) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    const HEAL = { water: 12, bacteria: 8, clean: 10 }
+    const COST = { water: 100, bacteria: 80, clean: 60 }
+    if (kind === 'temp' || kind === 'light') {
+      if (value === undefined) return
+      const target = kind === 'temp' ? 'temperature' : 'light'
+      aq.water[target] = Math.max(kind === 'temp' ? 5 : 0, Math.min(kind === 'temp' ? 40 : 100, value))
+      pushLog(`Условия «${aq.name}»: ${kind === 'temp' ? 'температура' : 'освещённость'} → ${Math.round(aq.water[target])}`, 'info')
+      bump()
+      return
+    }
+    if (kind === 'clean' && !aq.equipment.some((e) => e.id === 'filter')) {
+      ui.flash('Нет фильтра — нечего чистить!')
+      return
+    }
+    const cost = COST[kind]
+    if (state.money < cost) {
+      ui.flash('Не хватает денег!')
+      return
+    }
+    state.money -= cost
+    for (const fish of aq.fish) fish.health = Math.min(100, fish.health + HEAL[kind])
+    const label = kind === 'water' ? 'подмена воды' : kind === 'bacteria' ? 'добавлены бактерии' : 'почищен фильтр'
+    pushLog(`В «${aq.name}»: ${label} (−${cost}₽, рыбы здоровее)`, 'info')
     bump()
   },
   onAddDecor(aqId, kind) {

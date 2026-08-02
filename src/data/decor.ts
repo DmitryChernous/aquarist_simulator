@@ -22,6 +22,13 @@ export const DECOR: Record<DecorKind, DecorDef> = {
     attract: 6,
     desc: '+привлекательность, подкисляет воду (снижает pH)',
   },
+  substrate: {
+    kind: 'substrate',
+    name: 'Грунт',
+    price: 40,
+    attract: 5,
+    desc: '+привлекательность, натуральная подложка для аквариума',
+  },
 }
 
 export const DECOR_KINDS = Object.keys(DECOR) as DecorKind[]

@@ -93,7 +93,7 @@ export interface EquipmentInst {
 }
 
 // --- Декорация ---
-export type DecorKind = 'plant' | 'stone' | 'driftwood'
+export type DecorKind = 'plant' | 'stone' | 'driftwood' | 'substrate'
 
 export interface Decoration {
   id: string

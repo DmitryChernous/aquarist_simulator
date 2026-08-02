@@ -276,12 +276,69 @@ body {
   cursor: not-allowed;
 }
 
-.tank-status {
+.tab#tab-aquarium.aq-tab,
+.tab#tab-aquarium {
+  flex-direction: column;
+}
+.aq-body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.aq-stage {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.aq-stage canvas {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #07203a;
+  display: block;
+}
+.aq-info {
+  flex: 0 0 300px;
+  min-width: 260px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+.aq-keys {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.aq-line {
   font-size: 13px;
+  color: var(--text);
+}
+.aq-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.aq-action {
+  flex: 1 1 140px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 12px;
+  font-size: 15px;
+}
+.aq-action:hover {
+  border-color: var(--accent);
+}
+.aq-info .design-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .warn {

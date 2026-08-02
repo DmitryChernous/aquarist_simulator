@@ -15,7 +15,8 @@ export function tankAttractiveness(aq: AquariumState): number {
   for (const f of fish) appeal += SPECIES_BY_ID[f.speciesId].appeal * (f.health / 100)
   const appealPart = Math.min(appeal / 150, 1) * 15
 
-  const decorPart = Math.min(aq.decor.reduce((acc, d) => acc + { plant: 4, stone: 3, driftwood: 6 }[d.kind], 0), 20)
+  const DECOR_ATTRACT: Record<string, number> = { plant: 4, stone: 3, driftwood: 6, substrate: 5 }
+  const decorPart = Math.min(aq.decor.reduce((acc, d) => acc + (DECOR_ATTRACT[d.kind] ?? 0), 0), 20)
 
   const eqBonus = Math.min(
     aq.equipment.reduce((acc, e) => acc + (e.id === 'thermometer' ? 3 : 2), 0),

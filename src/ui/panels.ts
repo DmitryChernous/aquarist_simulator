@@ -22,6 +22,8 @@ export interface UIActions {
   onSelectStorage(storageId: string): void
   onUpgradeDesign(aqId: string): void
   onWaterChange(aqId: string, key: 'temperature' | 'ph' | 'gh', value: number): void
+  onSellEquipment(id: EquipmentId, aqId: string): void
+  onMaintain(aqId: string, kind: 'water' | 'bacteria' | 'clean' | 'temp' | 'light', value?: number): void
   onBuyEquipment(id: EquipmentId): void
   onInstallEquipment(id: EquipmentId, aqId: string): void
   onRemoveEquipment(id: EquipmentId, aqId: string): void
@@ -39,7 +41,7 @@ export interface UIActions {
 }
 
 type TabName = 'zal' | 'aquarium' | 'storage' | 'store' | 'orders' | 'furni'
-type WaterKey = 'temperature' | 'ph' | 'gh'
+
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -161,12 +163,8 @@ export function buildApp(actions: UIActions) {
 
   const aquariumSelect = app.querySelector<HTMLSelectElement>('#aquariumSelect')!
   const aquariumAtt = app.querySelector<HTMLSpanElement>('#aquariumAtt')!
-  const waterPanel = app.querySelector<HTMLDivElement>('.water-panel')!
-  const decorPanel = app.querySelector<HTMLDivElement>('.decor-panel')!
-  const equipmentPanel = app.querySelector<HTMLDivElement>('.equipment-panel')!
-  const designPanel = app.querySelector<HTMLDivElement>('.design-panel')!
-  const stockinPanel = app.querySelector<HTMLDivElement>('.stockin-panel')!
-  const aquariumFishList = app.querySelector<HTMLDivElement>('.aquarium-fish')!
+  const aqInfo = app.querySelector<HTMLDivElement>('.aq-info')!
+  const aqActions = app.querySelector<HTMLDivElement>('.aq-actions')!
 
   const storeDest = app.querySelector<HTMLSelectElement>('#storeDest')!
   const storeGrid = app.querySelector<HTMLDivElement>('.store-grid')!
@@ -449,95 +447,133 @@ export function buildApp(actions: UIActions) {
     const aq = all.find((a) => a.id === state.selectedAquariumId)
     if (!aq) {
       aquariumAtt.textContent = 'Аквариум не выбран'
-      for (const p of [waterPanel, decorPanel, equipmentPanel, designPanel, stockinPanel, aquariumFishList]) p.innerHTML = ''
+      aqInfo.innerHTML = ''
+      aqActions.innerHTML = ''
       return
     }
     aquariumAtt.textContent = `Привлекательность: ${tankAttractiveness(aq)}/100`
 
-    waterPanel.innerHTML = ''
-    const wDefs: [WaterKey, string, number, number, number][] = [
-      ['temperature', 'Температура', 15, 35, 0.5],
-      ['ph', 'Кислотность pH', 5, 8.5, 0.1],
-      ['gh', 'Жёсткость GH', 0, 20, 1],
-    ]
-    for (const [key, label, min, max, step] of wDefs) {
-      waterPanel.append(slider(label, min, max, step, aq.water[key], (v) => actions.onWaterChange(aq.id, key, v)))
-    }
-    waterPanel.append(el('div', 'water-read', `O₂: ${aq.water.o2}% (от аэратора) · Свет: ${aq.water.light}% (от осветителя)`))
-    if (aq.equipment.some((e) => e.id === 'heater')) {
-      waterPanel.append(el('div', 'warn', 'Нагреватель задаёт температуру — отрегулируйте его во вкладке оборудования.'))
-    }
+    aqInfo.innerHTML = ''
+    aqInfo.append(el('div', 'aq-keys', aq.name))
+    aqInfo.append(el('div', 'aq-line', `Объём ${aq.volume} л (${aq.w}×${aq.d}×${aq.h} см)`))
+    const w = aq.water
+    aqInfo.append(
+      el('div', 'list-title', 'Вода'),
+      el('div', 'aq-line', `Температура: ${w.temperature.toFixed(1)} °C`),
+      el('div', 'aq-line', `pH: ${w.ph.toFixed(1)} · GH: ${w.gh.toFixed(1)} °dH`),
+      el('div', 'aq-line', `O₂: ${Math.round(w.o2)}% · Свет: ${Math.round(w.light)}%`),
+    )
+    aqInfo.append(
+      el('div', 'list-title', 'Обитатели'),
+      el('div', 'aq-line', `Рыб и животных: ${aq.fish.length}`),
+    )
+    aqInfo.append(
+      el('div', 'list-title', 'Оборудование'),
+      el('div', 'aq-line', aq.equipment.length ? aq.equipment.map((e) => EQUIPMENT[e.id].name).join(', ') : 'нет'),
+    )
+    aqInfo.append(
+      el('div', 'list-title', 'Декор'),
+      el('div', 'aq-line', `Растительность: ${Math.round(vegetationOf(aq) * 100)}% · объект(а/в): ${aq.decor.length}`),
+    )
+    aqInfo.append(el('div', 'list-title', 'Дизайн'))
+    const dRow = el('div', 'design-row')
+    const dBtn = el('button', 'btn small', `Уровень ${aq.designLevel}/${MAX_DESIGN_LEVEL} — улучшить`)
+    dBtn.disabled = aq.designLevel >= MAX_DESIGN_LEVEL || state.money < designUpgradeCost(aq.designLevel)
+    dBtn.addEventListener('click', () => actions.onUpgradeDesign(aq.id))
+    dRow.append(dBtn)
+    dRow.append(el('span', 'aq-line', ` (${designUpgradeCost(aq.designLevel)}₽)`))
+    aqInfo.append(dRow)
 
-    decorPanel.innerHTML = ''
-    decorPanel.append(el('div', 'comp-hint', `Растительность: ${Math.round(vegetationOf(aq) * 100)}% · декораций: ${aq.decor.length}`))
-    const decorRow = el('div', 'modal-row')
-    for (const kind of DECOR_KINDS) {
-      const def = DECOR[kind]
-      const btn = el('button', 'btn small', `+${def.name} — ${def.price}₽`)
-      btn.disabled = state.money < def.price
-      btn.addEventListener('click', () => actions.onAddDecor(aq.id, kind))
-      decorRow.append(btn)
+    aqActions.innerHTML = ''
+    const mkBtn = (label: string, fn: () => void) => {
+      const b = el('button', 'btn aq-action', label)
+      b.addEventListener('click', fn)
+      aqActions.append(b)
     }
-    decorPanel.append(decorRow)
-    if (aq.decor.length) {
-      const list = el('div', 'comp-list')
-      for (const d of aq.decor) {
-        const rowEl = el('div', 'comp-row')
-        const rm = el('button', 'btn small', 'Убрать')
-        rm.addEventListener('click', () => actions.onRemoveDecor(aq.id, d.id))
-        rowEl.append(el('span', 'comp-name', DECOR[d.kind].name), rm)
-        list.append(rowEl)
-      }
-      decorPanel.append(list)
-    }
+    mkBtn('Оборудование', () => openEquipmentModal(state, aq.id))
+    mkBtn('Декор', () => openDecorModal(state, aq.id))
+    mkBtn('Обитатели', () => openInhabitantsModal(state, aq.id))
+    mkBtn('Обслуживание', () => openMaintenanceModal(state, aq.id))
+  }
 
-    equipmentPanel.innerHTML = ''
+  function openEquipmentModal(s: GameState, aqId: string): void {
+    const aq = allAquariums(s).find((a) => a.id === aqId)
+    if (!aq) return
+    const { body } = overlay(`Оборудование: «${aq.name}»`)
     const freeSlots = 4 - aq.equipment.length
-    equipmentPanel.append(el('div', 'comp-hint', `Оборудование: ${aq.equipment.length}/4 (свободно ${freeSlots})`))
+    body.append(el('div', 'comp-hint', `Слоты: ${aq.equipment.length}/4 (свободно ${freeSlots})`))
+
+    body.append(el('div', 'list-title', 'Установлено'))
+    if (aq.equipment.length === 0) body.append(el('div', 'empty', 'Нет установленного оборудования.'))
     for (const inst of aq.equipment) {
       const def = EQUIPMENT[inst.id]
-      const block = el('div', 'eq-block')
-      const head = el('div', 'eq-head')
-      head.append(el('strong', '', def.name))
-      const rm = el('button', 'btn small', 'Снять')
-      rm.addEventListener('click', () => actions.onRemoveEquipment(inst.id, aq.id))
-      head.append(rm)
-      block.append(head)
+      const block = el('div', 'comp-row')
+      block.append(el('span', 'comp-name', def.name))
+      const rack = el('button', 'btn small', 'На склад')
+      rack.addEventListener('click', () => actions.onRemoveEquipment(inst.id, aq.id))
+      const sellEq = el('button', 'btn small danger', `Продать (${Math.floor(def.price * 0.5)}₽)`)
+      sellEq.addEventListener('click', () => actions.onSellEquipment(inst.id, aq.id))
+      block.append(rack, sellEq)
+      body.append(block)
       for (const p of def.params) {
-        block.append(
+        body.append(
           slider(p.label, p.min, p.max, p.step, inst.settings[p.id] ?? p.default, (v) =>
             actions.onEquipmentSetting(aq.id, inst.id, p.id, v),
           ),
         )
       }
-      equipmentPanel.append(block)
-    }
-    if (state.shop.rackInventory.length > 0) {
-      equipmentPanel.append(el('div', 'comp-hint', 'Доступно с полки:'))
-      for (const eid of state.shop.rackInventory) {
-        const def = EQUIPMENT[eid]
-        const row = el('div', 'comp-row')
-        const btn = el('button', 'btn small', 'Установить')
-        btn.disabled = aq.equipment.some((x) => x.id === eid) || freeSlots <= 0
-        btn.addEventListener('click', () => actions.onInstallEquipment(eid, aq.id))
-        row.append(el('span', '', def.name), btn)
-        equipmentPanel.append(row)
-      }
     }
 
-    designPanel.innerHTML = ''
-    designPanel.append(el('div', '', `Уровень дизайна: ${aq.designLevel} / ${MAX_DESIGN_LEVEL}`))
-    const nextCost = designUpgradeCost(aq.designLevel)
-    const dBtn = el('button', 'btn', 'Улучшить дизайн')
-    dBtn.disabled = aq.designLevel >= MAX_DESIGN_LEVEL || state.money < nextCost
-    if (aq.designLevel < MAX_DESIGN_LEVEL) dBtn.append(el('span', 'btn-cost', ` — ${nextCost}₽`))
-    dBtn.addEventListener('click', () => actions.onUpgradeDesign(aq.id))
-    designPanel.append(dBtn)
+    body.append(el('div', 'list-title', 'На полке (склад)'))
+    if (s.shop.rackInventory.length === 0) {
+      body.append(el('div', 'empty', 'На полке нет оборудования. Купите на вкладке «Склад».'))
+    }
+    for (const eid of s.shop.rackInventory) {
+      const def = EQUIPMENT[eid]
+      const row = el('div', 'comp-row')
+      const btn = el('button', 'btn small', 'Установить')
+      btn.disabled = aq.equipment.length >= 4 || aq.equipment.some((x) => x.id === eid)
+      btn.addEventListener('click', () => actions.onInstallEquipment(eid, aq.id))
+      row.append(el('span', 'comp-name', def.name), btn)
+      body.append(row)
+    }
+  }
 
-    stockinPanel.innerHTML = ''
+  function openDecorModal(s: GameState, aqId: string): void {
+    const aq = allAquariums(s).find((a) => a.id === aqId)
+    if (!aq) return
+    const { body } = overlay(`Декор: «${aq.name}»`)
+    body.append(el('div', 'comp-hint', `Растительность: ${Math.round(vegetationOf(aq) * 100)}%`))
+    body.append(el('div', 'list-title', 'Добавить'))
+    const addRow = el('div', 'modal-row')
+    for (const kind of DECOR_KINDS) {
+      const def = DECOR[kind]
+      const btn = el('button', 'btn small', `+${def.name} — ${def.price}₽`)
+      btn.disabled = s.money < def.price
+      btn.addEventListener('click', () => actions.onAddDecor(aq.id, kind))
+      addRow.append(btn)
+    }
+    body.append(addRow)
+    body.append(el('div', 'list-title', 'Установлено'))
+    if (aq.decor.length === 0) body.append(el('div', 'empty', 'Декора нет.'))
+    for (const d of aq.decor) {
+      const row = el('div', 'comp-row')
+      const rm = el('button', 'btn small', 'Убрать')
+      rm.addEventListener('click', () => actions.onRemoveDecor(aq.id, d.id))
+      row.append(el('span', 'comp-name', DECOR[d.kind].name), rm)
+      body.append(row)
+    }
+  }
+
+  function openInhabitantsModal(s: GameState, aqId: string): void {
+    const aq = allAquariums(s).find((a) => a.id === aqId)
+    if (!aq) return
+    const { body } = overlay(`Обитатели: «${aq.name}»`)
+
+    body.append(el('div', 'list-title', 'Заселить со склада'))
     const stockById = new Map<string, number>()
-    for (const st of state.storage) for (const item of st.stock) stockById.set(item.speciesId, (stockById.get(item.speciesId) ?? 0) + item.count)
-    if (stockById.size === 0) stockinPanel.append(el('div', 'empty', 'Склад пуст — закупите рыб во вкладке «Магазин».'))
+    for (const st of s.storage) for (const item of st.stock) stockById.set(item.speciesId, (stockById.get(item.speciesId) ?? 0) + item.count)
+    if (stockById.size === 0) body.append(el('div', 'empty', 'Склад пуст — закупите обитателей во вкладке «Магазин».'))
     for (const [speciesId, count] of stockById) {
       const species = SPECIES_BY_ID[speciesId]
       const room = canStock(aq, species, 1)
@@ -556,13 +592,12 @@ export function buildApp(actions: UIActions) {
         const n = Math.max(1, Math.min(count, room, Number(inp.value) || 1))
         actions.onStockToAquarium(speciesId, aq.id, n)
       })
-      row.append(dot, el('span', 'stock-name', `${species.name} (склад ${count} · в аквариум до ${room})`), inp, btn)
-      stockinPanel.append(row)
+      row.append(dot, el('span', 'stock-name', `${species.name} (склад ${count} · до ${room})`), inp, btn)
+      body.append(row)
     }
 
-    aquariumFishList.innerHTML = ''
-    aquariumFishList.append(el('div', 'list-title', `Рыбы в аквариуме (${aq.fish.length})`))
-    if (aq.fish.length === 0) aquariumFishList.append(el('div', 'empty', 'Аквариум пуст. Заселите рыб выше.'))
+    body.append(el('div', 'list-title', `В аквариуме (${aq.fish.length})`))
+    if (aq.fish.length === 0) body.append(el('div', 'empty', 'Аквариум пуст.'))
     for (const fish of aq.fish) {
       const species = SPECIES_BY_ID[fish.speciesId]
       const row = el('div', 'fish-row')
@@ -576,8 +611,36 @@ export function buildApp(actions: UIActions) {
       const toStorage = el('button', 'btn small', 'В склад')
       toStorage.addEventListener('click', () => actions.onMoveToStorage(aq.id, fish.id))
       row.append(dot, name, el('span', 'health-num', `${Math.round(fish.health)}%`), toStorage)
-      aquariumFishList.append(row)
+      body.append(row)
     }
+  }
+
+  function openMaintenanceModal(s: GameState, aqId: string): void {
+    const aq = allAquariums(s).find((a) => a.id === aqId)
+    if (!aq) return
+    const { body } = overlay(`Обслуживание: «${aq.name}»`)
+    body.append(
+      el('div', 'list-title', 'Условия'),
+      slider('Температура', 15, 35, 0.5, aq.water.temperature, (v) => actions.onMaintain(aq.id, 'temp', v)),
+      slider('Освещённость', 0, 100, 1, aq.water.light, (v) => actions.onMaintain(aq.id, 'light', v)),
+    )
+    body.append(el('div', 'list-title', 'Работы'))
+    const workList = el('div', 'comp-list')
+    const jobs: [string, number][] = [
+      ['Подменить воду', 100],
+      ['Добавить бактерии', 80],
+      ['Почистить фильтр', 60],
+    ]
+    for (const [label, cost] of jobs) {
+      const row = el('div', 'comp-row')
+      const btn = el('button', 'btn small', `${label} — ${cost}₽`)
+      btn.disabled = s.money < cost
+      const kind = label === 'Подменить воду' ? 'water' : label === 'Добавить бактерии' ? 'bacteria' : 'clean'
+      btn.addEventListener('click', () => actions.onMaintain(aq.id, kind))
+      row.append(el('span', 'comp-name', label), btn)
+      workList.append(row)
+    }
+    body.append(workList)
   }
 
   function renderStorage(state: GameState): void {
@@ -792,6 +855,7 @@ function buildLayout(): HTMLElement {
 
   const aquariumTab = el('section', 'tab')
   aquariumTab.id = 'tab-aquarium'
+  aquariumTab.classList.add('aq-tab')
   const aqBar = el('div', 'tank-bar')
   aqBar.append(el('label', '', 'Аквариум: '))
   const aquariumSelect = el('select')
@@ -800,26 +864,18 @@ function buildLayout(): HTMLElement {
   aquariumAtt.id = 'aquariumAtt'
   aqBar.append(aquariumSelect, el('span', '', ' · '), aquariumAtt)
   aquariumTab.append(aqBar)
-  const tankWrap = el('div', 'tank-wrap')
+  const aqBody = el('div', 'aq-body')
+  const aqStage = el('div', 'aq-stage')
   const canvas = el('canvas')
   canvas.id = 'tank'
   canvas.width = 960
   canvas.height = 420
-  tankWrap.append(canvas)
-  const side = el('aside', 'side')
-  side.append(el('h3', '', 'Параметры воды'))
-  side.append(el('div', 'water-panel'))
-  side.append(el('h3', '', 'Декорации'))
-  side.append(el('div', 'decor-panel'))
-  side.append(el('h3', '', 'Оборудование'))
-  side.append(el('div', 'equipment-panel'))
-  side.append(el('h3', '', 'Дизайн'))
-  side.append(el('div', 'design-panel'))
-  side.append(el('h3', '', 'Заселить из склада'))
-  side.append(el('div', 'stockin-panel'))
-  side.append(el('h3', '', 'Рыбы'))
-  side.append(el('div', 'aquarium-fish'))
-  aquariumTab.append(tankWrap, side)
+  aqStage.append(canvas)
+  const aqInfo = el('aside', 'aq-info')
+  aqInfo.append(el('h3', '', 'Состояние'))
+  aqBody.append(aqStage, aqInfo)
+  const aqActions = el('div', 'aq-actions')
+  aquariumTab.append(aqBody, aqActions)
 
   const storageTab = el('section', 'tab')
   storageTab.id = 'tab-storage'

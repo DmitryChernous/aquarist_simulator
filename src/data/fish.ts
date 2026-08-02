@@ -57,6 +57,20 @@ export const FISH_SPECIES: FishSpecies[] = [
     o2Min: 35, o2Max: 85, lightMin: 25, lightMax: 55, vegMin: 0.2, vegMax: 0.5,
     schooling: false, appeal: 95,
   },
+  {
+    id: 'shrimp', name: 'Креветка вишнёвая', latin: 'Neocaridina davidi', color: '#ff5b6b',
+    buyPrice: 15, sellPrice: 35, sizeCm: 2.5, minVolume: 5,
+    tempMin: 22, tempMax: 27, phMin: 6.5, phMax: 7.8, ghMin: 6, ghMax: 15,
+    o2Min: 40, o2Max: 95, lightMin: 20, lightMax: 60, vegMin: 0.3, vegMax: 0.7,
+    schooling: true, appeal: 35,
+  },
+  {
+    id: 'snail', name: 'Ампулярия', latin: 'Pomacea bridgesii', color: '#f2d16b',
+    buyPrice: 20, sellPrice: 40, sizeCm: 2, minVolume: 5,
+    tempMin: 22, tempMax: 28, phMin: 6.5, phMax: 8.0, ghMin: 6, ghMax: 18,
+    o2Min: 30, o2Max: 90, lightMin: 15, lightMax: 55, vegMin: 0, vegMax: 0.3,
+    schooling: false, appeal: 20,
+  },
 ]
 
 export const SPECIES_BY_ID: Record<string, FishSpecies> = Object.fromEntries(

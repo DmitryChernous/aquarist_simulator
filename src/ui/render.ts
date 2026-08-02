@@ -65,6 +65,18 @@ export function drawDecor(ctx: CanvasRenderingContext2D, kind: string, x: number
     ctx.beginPath()
     ctx.arc(x - 4, y - 8, 4, 0, Math.PI * 2)
     ctx.fill()
+  } else if (kind === 'substrate') {
+    ctx.fillStyle = '#7a5230'
+    ctx.beginPath()
+    ctx.ellipse(x, y, 15, 4, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#8a6040'
+    for (let i = 0; i < 5; i++) {
+      const gx = x - 12 + i * 6
+      ctx.beginPath()
+      ctx.arc(gx, y - 2, 2.2, 0, Math.PI * 2)
+      ctx.fill()
+    }
   } else {
     ctx.strokeStyle = '#7a5230'
     ctx.lineWidth = 4
