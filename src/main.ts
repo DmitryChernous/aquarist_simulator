@@ -311,13 +311,23 @@ const ui = buildApp({
   onMaintain(aqId: string, kind: 'water' | 'bacteria' | 'clean' | 'temp' | 'light', value?: number) {
     const aq = aquariumById(aqId)
     if (!aq) return
-    const HEAL = { water: 12, bacteria: 8, clean: 10 }
-    const COST = { water: 100, bacteria: 80, clean: 60 }
+
+    // Температура и свет задают целевые значения установленного оборудования,
+    // иначе (без оборудования) пишут прямо в воду. Так настройки сохраняются.
     if (kind === 'temp' || kind === 'light') {
       if (value === undefined) return
-      const target = kind === 'temp' ? 'temperature' : 'light'
-      aq.water[target] = Math.max(kind === 'temp' ? 5 : 0, Math.min(kind === 'temp' ? 40 : 100, value))
-      pushLog(`Условия «${aq.name}»: ${kind === 'temp' ? 'температура' : 'освещённость'} → ${Math.round(aq.water[target])}`, 'info')
+      const eqId = kind === 'temp' ? 'heater' : 'light'
+      const inst = aq.equipment.find((e) => e.id === eqId)
+      if (inst) {
+        const param = kind === 'temp' ? 'target' : 'intensity'
+        inst.settings[param] = value
+        recalcWater(aq)
+        pushLog(`Условия «${aq.name}»: ${kind === 'temp' ? 'температура' : 'освещённость'} → ${Math.round(value)}`, 'info')
+      } else {
+        if (kind === 'temp') aq.water.temperature = Math.max(5, Math.min(40, value))
+        else aq.water.light = Math.max(0, Math.min(100, value))
+        pushLog(`Условия «${aq.name}»: ${kind === 'temp' ? 'температура' : 'освещённость'} → ${Math.round(value)} (без оборудования)`, 'info')
+      }
       bump()
       return
     }
@@ -325,15 +335,10 @@ const ui = buildApp({
       ui.flash('Нет фильтра — нечего чистить!')
       return
     }
-    const cost = COST[kind]
-    if (state.money < cost) {
-      ui.flash('Не хватает денег!')
-      return
-    }
-    state.money -= cost
+    const HEAL = { water: 12, bacteria: 8, clean: 10 }
     for (const fish of aq.fish) fish.health = Math.min(100, fish.health + HEAL[kind])
     const label = kind === 'water' ? 'подмена воды' : kind === 'bacteria' ? 'добавлены бактерии' : 'почищен фильтр'
-    pushLog(`В «${aq.name}»: ${label} (−${cost}₽, рыбы здоровее)`, 'info')
+    pushLog(`В «${aq.name}»: ${label} — рыбы здоровее`, 'info')
     bump()
   },
   onAddDecor(aqId, kind) {

@@ -708,24 +708,50 @@ export function buildApp(actions: UIActions) {
   function openMaintenanceModal(s: GameState, aqId: string): void {
     const aq = allAquariums(s).find((a) => a.id === aqId)
     if (!aq) return
+    const heater = aq.equipment.find((e) => e.id === 'heater')
+    const lamp = aq.equipment.find((e) => e.id === 'light')
+    // Эффективные значения: с оборудованием — его настройки, иначе вода напрямую.
+    const curTemp = heater ? heater.settings.target ?? aq.water.temperature : aq.water.temperature
+    const curLight = lamp ? lamp.settings.intensity ?? aq.water.light : aq.water.light
+
+    let newTemp = curTemp
+    let newLight = curLight
+    const refreshApply = () => {
+      apply.disabled = Math.abs(newTemp - curTemp) < 0.01 && Math.abs(newLight - curLight) < 0.01
+    }
+
     const { body } = overlay(`Обслуживание: «${aq.name}»`)
     body.append(
-      el('div', 'list-title', 'Условия'),
-      slider('Температура', 15, 35, 0.5, aq.water.temperature, (v) => actions.onMaintain(aq.id, 'temp', v)),
-      slider('Освещённость', 0, 100, 1, aq.water.light, (v) => actions.onMaintain(aq.id, 'light', v)),
+      el('div', 'list-title', 'Условия воды'),
+      slider('Температура', 15, 35, 0.5, curTemp, (v) => {
+        newTemp = v
+        refreshApply()
+      }),
+      slider('Освещённость', 0, 100, 1, curLight, (v) => {
+        newLight = v
+        refreshApply()
+      }),
     )
+    const applyHint = el('div', 'comp-hint', 'Ползунки задают целевые настройки. Без нагревателя/освещения применяются к воде напрямую.')
+    body.append(applyHint)
+    const apply = el('button', 'btn', 'Применить')
+    apply.addEventListener('click', () => {
+      actions.onMaintain(aq.id, 'temp', newTemp)
+      actions.onMaintain(aq.id, 'light', newLight)
+    })
+    refreshApply()
+    body.append(apply)
+
     body.append(el('div', 'list-title', 'Работы'))
     const workList = el('div', 'comp-list')
-    const jobs: [string, number][] = [
-      ['Подменить воду', 100],
-      ['Добавить бактерии', 80],
-      ['Почистить фильтр', 60],
+    const jobs: [string, 'water' | 'bacteria' | 'clean'][] = [
+      ['Подменить воду', 'water'],
+      ['Добавить бактерии', 'bacteria'],
+      ['Почистить фильтр', 'clean'],
     ]
-    for (const [label, cost] of jobs) {
+    for (const [label, kind] of jobs) {
       const row = el('div', 'comp-row')
-      const btn = el('button', 'btn small', `${label} — ${cost}₽`)
-      btn.disabled = s.money < cost
-      const kind = label === 'Подменить воду' ? 'water' : label === 'Добавить бактерии' ? 'bacteria' : 'clean'
+      const btn = el('button', 'btn small', 'Выполнить')
       btn.addEventListener('click', () => actions.onMaintain(aq.id, kind))
       row.append(el('span', 'comp-name', label), btn)
       workList.append(row)
