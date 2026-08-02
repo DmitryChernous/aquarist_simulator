@@ -6,6 +6,7 @@ import { tankAttractiveness } from '../sim/buyers'
 import { availableStock, buyPrice, retailPrice, stockTotal, wholesalePrice } from '../sim/economy'
 import { canStock, vegetationOf, ROOM_TEMP } from '../sim/aquarium'
 import { fishWellbeing } from '../sim/wellbeing'
+import { VERSION } from '../version'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
 import type { AquariumState, DecorKind, EquipmentId, GameState, ShelfState } from '../types'
 import type { WellBeingReport } from '../sim/wellbeing'
@@ -1234,7 +1235,9 @@ function buildLayout(): HTMLElement {
   main.append(zalTab, aquariumTab, storageTab, storeTab, ordersTab, furnTab)
 
   const footer = el('footer', 'log-panel')
-  footer.append(el('h3', '', 'Журнал событий'))
+  const footHead = el('div', 'log-head')
+  footHead.append(el('h3', '', 'Журнал событий'), el('span', 'version-badge', `v${VERSION}`))
+  footer.append(footHead)
   footer.append(el('ul', 'log-list'))
 
   game.append(header, nav, main, footer)

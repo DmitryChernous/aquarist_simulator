@@ -1,4 +1,5 @@
 import './style.css'
+import { VERSION } from './version'
 import { SPECIES_BY_ID } from './data/fish'
 import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from './data/aquarium'
 import { EQUIPMENT, SHELVES, STORAGE_TANK_PRICE, rackCapacity, shelfLoadLeft } from './data/shop'
@@ -22,6 +23,8 @@ const FEED_COST = 5
 const FEED_AMOUNT = 30
 
 let state: GameState = loadState()
+
+console.info(`[aquarist] запуск · версия ${VERSION} · баланс ${state.money}`)
 
 let paused = false
 let timeScale = 1

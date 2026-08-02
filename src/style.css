@@ -663,6 +663,25 @@ body {
   color: var(--ok);
 }
 
+.log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.log-head h3 {
+  margin: 0 0 6px;
+}
+.log-head .version-badge {
+  order: 2;
+  font-size: 12px;
+  color: #7d93ab;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2px 10px;
+}
+
 .log-panel {
   background: var(--panel);
   border: 1px solid var(--border);
