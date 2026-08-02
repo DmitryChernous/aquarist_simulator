@@ -5,7 +5,7 @@ import { EQUIPMENT, SHELVES, STORAGE_TANK_PRICE, rackCapacity, shelfLoadLeft } f
 import { DECOR } from './data/decor'
 import { DAY_DURATION_SECONDS } from './timing'
 import { allAquariums, canStock, recalcWater, usedVolume } from './sim/aquarium'
-import { updateHealth } from './sim/health'
+import { updateHealth, feedFish } from './sim/health'
 import { availableStock, buyPrice, dailyUpkeep, wholesalePrice } from './sim/economy'
 import { arrivalInterval, generateOrder, shopAttractiveness, updateMarket } from './sim/buyers'
 import { clearSave, loadState, saveState } from './save'
@@ -17,6 +17,9 @@ import type { AquariumState, EquipmentId, FishInstance, FishSpecies, GameState, 
 const TANK = { width: 960, height: 420 }
 const LOG_LIMIT = 40
 let idc = 1
+
+const FEED_COST = 5
+const FEED_AMOUNT = 30
 
 let state: GameState = loadState()
 
@@ -437,6 +440,28 @@ const ui = buildApp({
     }
     bump()
   },
+  onFeed(aqId, fishId) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    if (aq.fish.length === 0) return
+    if (state.money < FEED_COST) {
+      ui.flash('Не хватает денег на корм!')
+      return
+    }
+    state.money -= FEED_COST
+    let overfeed = 0
+    const targets = fishId ? aq.fish.filter((f) => f.id === fishId) : aq.fish
+    for (const f of targets) {
+      if (feedFish(f, FEED_AMOUNT)) overfeed++
+    }
+    pushLog(
+      overfeed > 0
+        ? `Кормление в «${aq.name}»: ${targets.length} рыб, ${overfeed} перекормлено −${FEED_COST}₽`
+        : `Покорено рыбы в «${aq.name}» −${FEED_COST}₽`,
+      'info',
+    )
+    bump()
+  },
   onBuyFishToStorage(speciesId, storageId) {
     const storage = storageTank(state, storageId)
     if (!storage) return
@@ -547,6 +572,10 @@ function createFish(species: FishSpecies): FishInstance {
     y: 40 + Math.random() * (TANK.height - 90),
     vx: (Math.random() - 0.5) * 40,
     vy: (Math.random() - 0.5) * 40,
+    hunger: 70 + Math.random() * 20,
+    maturity: 0.5,
+    spawnReady: 0,
+    diseased: false,
   }
 }
 

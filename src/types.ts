@@ -174,6 +174,10 @@ export interface FishInstance {
   y: number
   vx: number
   vy: number
+  hunger: number // сытость 0..100 (0 — голод, 100 — наелся)
+  maturity: number // взросление/рост 0..1
+  spawnReady: number // готовность к нересту 0..100
+  diseased: boolean // болеет ли
 }
 
 export interface ShopState {

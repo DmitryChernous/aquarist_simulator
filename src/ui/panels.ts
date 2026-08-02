@@ -5,8 +5,10 @@ import { DECOR, DECOR_KINDS } from '../data/decor'
 import { tankAttractiveness } from '../sim/buyers'
 import { availableStock, buyPrice, retailPrice, stockTotal, wholesalePrice } from '../sim/economy'
 import { canStock, vegetationOf } from '../sim/aquarium'
+import { fishWellbeing } from '../sim/wellbeing'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
 import type { AquariumState, DecorKind, EquipmentId, GameState, ShelfState } from '../types'
+import type { WellBeingReport } from '../sim/wellbeing'
 
 export interface UIActions {
   onBuyShelf(specId: string): void
@@ -36,6 +38,7 @@ export interface UIActions {
   onSellRackEquipment(id: EquipmentId): void
   onStockToAquarium(speciesId: string, aqId: string, count: number): void
   onMoveToStorage(aqId: string, fishId: string): void
+  onFeed(aqId: string, fishId: string | null): void
   onBuyFishToStorage(speciesId: string, storageId: string): void
   onWholesaleSell(speciesId: string, storageId: string): void
   onFulfillOrder(orderId: string): void
@@ -75,6 +78,24 @@ function fillSelect(select: HTMLSelectElement, options: { value: string; label: 
   }
   if (options.some((o) => o.value === prev)) select.value = prev
   else if (options.length) select.value = options[0].value
+}
+
+function statusOf(score: number): 'ok' | 'warn' | 'bad' {
+  if (score >= 70) return 'ok'
+  if (score >= 35) return 'warn'
+  return 'bad'
+}
+
+function welfareLabel(rep: WellBeingReport): string {
+  if (rep.diseased) return 'болеет'
+  if (rep.wellbeing >= 75) return 'отлично'
+  if (rep.wellbeing >= 55) return 'хорошо'
+  if (rep.wellbeing >= 35) return 'плохо'
+  return 'критично'
+}
+
+function welfareClass(rep: WellBeingReport): string {
+  return rep.diseased ? 'dead' : statusOf(rep.wellbeing)
 }
 
 function demandBadge(factor: number): HTMLElement {
@@ -611,11 +632,19 @@ export function buildApp(actions: UIActions) {
       body.append(row)
     }
 
-    body.append(el('div', 'list-title', `В аквариуме (${aq.fish.length})`))
-    if (aq.fish.length === 0) body.append(el('div', 'empty', 'Аквариум пуст.'))
+    body.append(el('div', 'list-title', 'В аквариуме'))
+    const fishWrap = el('div')
+    if (aq.fish.length === 0) fishWrap.append(el('div', 'empty', 'Аквариум пуст.'))
+
+    const feedAll = el('button', 'btn small', `Кормить всех (5₽)`)
+    feedAll.disabled = s.money < 5 || aq.fish.length === 0
+    feedAll.addEventListener('click', () => actions.onFeed(aq.id, null))
+    body.append(feedAll)
+
     for (const fish of aq.fish) {
       const species = SPECIES_BY_ID[fish.speciesId]
-      const row = el('div', 'fish-row')
+      const rep = fishWellbeing(species, fish, aq)
+      const row = el('div', 'fish-row stock-row-btn')
       const dot = el('span', 'dot')
       dot.style.background = species.color
       const fill = el('span', 'health-fill')
@@ -623,11 +652,57 @@ export function buildApp(actions: UIActions) {
       fill.classList.add(fish.health > 60 ? 'ok' : fish.health > 30 ? 'warn' : 'dead')
       const name = el('span', 'fish-name', `${species.name} `)
       name.append(fill)
-      const toStorage = el('button', 'btn small', 'В склад')
-      toStorage.addEventListener('click', () => actions.onMoveToStorage(aq.id, fish.id))
-      row.append(dot, name, el('span', 'health-num', `${Math.round(fish.health)}%`), toStorage)
-      body.append(row)
+      const badge = el('span', 'welfare-tag', welfareLabel(rep))
+      badge.classList.add('welfare', welfareClass(rep))
+      row.append(dot, name, el('span', 'health-num', `${Math.round(fish.health)}%`), badge)
+      row.appendChild(el('span', 'fish-caret', '›'))
+      row.addEventListener('click', () => openFishDetailModal(s, aq.id, fish.id))
+      fishWrap.append(row)
     }
+    body.append(fishWrap)
+  }
+
+  function openFishDetailModal(s: GameState, aqId: string, fishId: string): void {
+    const aq = allAquariums(s).find((a) => a.id === aqId)
+    const fish = aq?.fish.find((f) => f.id === fishId)
+    const species = fish && SPECIES_BY_ID[fish.speciesId]
+    if (!aq || !fish || !species) return
+    const rep = fishWellbeing(species, fish, aq)
+    const { body } = overlay(`${species.name}`)
+    body.append(
+      el('div', 'list-title', 'Самочувствие'),
+      el('div', 'well-total', `${Math.round(rep.wellbeing)}/100`),
+    )
+    const tag = el('span', 'welfare-tag', welfareLabel(rep))
+    tag.classList.add('welfare', welfareClass(rep))
+    const line = el('div', 'well-line')
+    line.append(el('span', '', 'Общее состояние: '), tag)
+    body.append(
+      line,
+      el('div', 'aq-line', `Рост/взросление: ${Math.round(fish.maturity * 100)}%`),
+      el('div', 'aq-line', `Готовность к нересту: ${Math.round(fish.spawnReady)}%`),
+      el('div', 'aq-line', rep.diseased ? 'Состояние: болеет' : 'Состояние: здоров'),
+    )
+    body.appendChild(el('div', 'list-title', 'Потребности'))
+    for (const b of rep.bars) {
+      const rowEl = el('div', 'need-row')
+      const lbl = el('div', 'need-head')
+      lbl.append(el('span', 'need-label', b.label), el('span', 'need-val', b.note))
+      const barWrap = el('div', 'need-bar')
+      const fill = el('div', 'need-fill')
+      fill.style.width = `${b.score}%`
+      fill.classList.add(b.status)
+      barWrap.appendChild(fill)
+      rowEl.append(lbl, barWrap)
+      body.appendChild(rowEl)
+    }
+    const feed = el('button', 'btn', `Покормить (5₽)`)
+    feed.disabled = s.money < 5
+    feed.addEventListener('click', () => actions.onFeed(aq.id, fish.id))
+    body.appendChild(feed)
+    const toStorage = el('button', 'btn danger', 'В склад')
+    toStorage.addEventListener('click', () => actions.onMoveToStorage(aq.id, fish.id))
+    body.appendChild(toStorage)
   }
 
   function openMaintenanceModal(s: GameState, aqId: string): void {

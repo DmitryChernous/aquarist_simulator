@@ -86,6 +86,10 @@ function migrateFish(list: any[]): AquariumState['fish'] {
     y: typeof f.y === 'number' ? f.y : 40,
     vx: 0,
     vy: 0,
+    hunger: typeof f.hunger === 'number' ? f.hunger : 80,
+    maturity: typeof f.maturity === 'number' ? f.maturity : 0.5,
+    spawnReady: typeof f.spawnReady === 'number' ? f.spawnReady : 0,
+    diseased: Boolean(f.diseased),
   }))
 }
 

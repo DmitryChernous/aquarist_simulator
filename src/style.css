@@ -877,6 +877,106 @@ body {
   padding: 4px 6px;
 }
 
+.stock-row-btn {
+  display: flex;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+.stock-row-btn:hover {
+  border-color: var(--accent);
+}
+
+.welfare-tag {
+  font-size: 12px;
+  font-weight: 600;
+}
+.tag {
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.welfare {
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.welfare.ok {
+  background: rgba(61, 220, 132, 0.18);
+  color: var(--ok);
+}
+.welfare.warn {
+  background: rgba(245, 185, 66, 0.18);
+  color: var(--warn);
+}
+.welfare.dead {
+  background: rgba(255, 95, 109, 0.18);
+  color: var(--dead);
+}
+
+.fish-caret {
+  color: #7d93ab;
+  margin-left: auto;
+}
+
+.well-total {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--ok);
+  margin-bottom: 6px;
+}
+.well-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.need-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.need-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.need-label {
+  font-weight: 600;
+}
+.need-val {
+  color: #9fb6cd;
+  text-align: right;
+}
+.need-bar {
+  height: 8px;
+  background: #0a1a2b;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.need-fill {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  transition: width 0.3s;
+}
+.need-fill.warn {
+  background: var(--warn);
+}
+.need-fill.dead {
+  background: var(--dead);
+}
+
 .rack-panel,
 .components-panel,
 .design-panel {
