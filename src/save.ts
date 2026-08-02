@@ -4,7 +4,7 @@ import { AQUARIUM_MODELS } from './data/aquarium'
 import { EQUIPMENT } from './data/shop'
 
 const KEY = 'aquarist-save-v4'
-export const START_MONEY = 800
+export const START_MONEY = 5000
 
 const LEGACY_EQ: Record<string, string> = {
   heater: 'heater',
