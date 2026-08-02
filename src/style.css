@@ -264,6 +264,39 @@ body {
   color: #06121f;
 }
 
+.time-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+}
+
+.time-control .btn {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+
+.btn-pause {
+  min-width: 42px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--accent);
+}
+
+.btn-pause.active {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: #06121f;
+}
+
+.btn-speed.active {
+  box-shadow: inset 0 0 0 2px #06121f;
+  background: var(--ok);
+  color: #06121f;
+}
+
 .tank-fish {
   display: flex;
   flex-direction: column;

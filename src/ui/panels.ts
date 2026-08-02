@@ -33,6 +33,8 @@ export interface UIActions {
   onMoveDisplayToStorage(tankId: string, fishId: string): void
   onFulfillOrder(orderId: string): void
   onEndDay(): void
+  onTogglePause(): void
+  onSetSpeed(speed: number): void
   onReset(): void
 }
 
@@ -93,6 +95,8 @@ export function buildApp(actions: UIActions) {
   const hudSales = app.querySelector<HTMLSpanElement>('.hud-sales')!
   const hudFlash = app.querySelector<HTMLSpanElement>('.hud-flash')!
   const dayProgressFill = app.querySelector<HTMLDivElement>('.day-progress-fill')!
+  const pauseBtn = app.querySelector<HTMLButtonElement>('.btn-pause')!
+  const speedBtns = Array.from(app.querySelectorAll<HTMLButtonElement>('.btn-speed'))
 
   const displaySelect = app.querySelector<HTMLSelectElement>('#displaySelect')!
   const storageSelect = app.querySelector<HTMLSelectElement>('#storageSelect')!
@@ -128,6 +132,10 @@ export function buildApp(actions: UIActions) {
   displaySelect.addEventListener('change', () => actions.onSelectDisplay(displaySelect.value))
   storageSelect.addEventListener('change', () => actions.onSelectStorage(storageSelect.value))
   app.querySelector<HTMLButtonElement>('.btn-reset')!.addEventListener('click', () => actions.onReset())
+  pauseBtn.addEventListener('click', () => actions.onTogglePause())
+  for (const btn of speedBtns) {
+    btn.addEventListener('click', () => actions.onSetSpeed(Number(btn.dataset.speed)))
+  }
   app.querySelector<HTMLButtonElement>('.btn-endday')!.addEventListener('click', () => {
     if (window.confirm('Завершить день? Обновится рынок, будет списана аренда и содержание.')) actions.onEndDay()
   })
@@ -155,11 +163,16 @@ export function buildApp(actions: UIActions) {
     }
   }
 
-  function update(state: GameState, shopAtt: number): void {
+  function update(state: GameState, shopAtt: number, timeScale: number, paused: boolean): void {
     hudMoney.textContent = `Деньги: ${state.money}₽`
     hudDay.textContent = `День ${state.day} · ${formatGameDate(state.day)}`
     const ratio = Math.min(1, Math.max(0, state.daySeconds / DAY_DURATION_SECONDS))
     dayProgressFill.style.width = `${Math.round(ratio * 100)}%`
+    pauseBtn.textContent = paused ? '▶' : '⏸'
+    pauseBtn.classList.toggle('active', paused)
+    for (const btn of speedBtns) {
+      btn.classList.toggle('active', !paused && timeScale === Number(btn.dataset.speed))
+    }
     hudAtt.textContent = `Привлекательность зала: ${shopAtt}/100`
     hudAtt.classList.toggle('good', shopAtt >= 60)
     hudAtt.classList.toggle('mid', shopAtt >= 30 && shopAtt < 60)
@@ -576,6 +589,15 @@ function buildLayout(): HTMLElement {
   )
   const right = el('div', 'hud-right')
   right.append(el('span', 'hud-flash', ''))
+  const timeControl = el('div', 'time-control')
+  const pauseBtn = el('button', 'btn small btn-pause', '⏸')
+  timeControl.append(pauseBtn)
+  for (const speed of [1, 2, 3, 5]) {
+    const b = el('button', 'btn small btn-speed', `${speed}x`)
+    b.dataset.speed = String(speed)
+    timeControl.append(b)
+  }
+  right.append(timeControl)
   const endDayBtn = el('button', 'btn small btn-endday', 'Завершить день')
   right.append(endDayBtn)
   const resetBtn = el('button', 'btn small btn-reset', 'Сброс')

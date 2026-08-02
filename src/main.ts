@@ -29,6 +29,9 @@ const LOG_LIMIT = 40
 
 let state: GameState = loadState()
 
+let paused = false
+let timeScale = 1
+
 const ui = buildApp({
   onBuyComponent(id: ComponentId) {
     const def = COMPONENTS[id]
@@ -238,6 +241,13 @@ const ui = buildApp({
   onEndDay() {
     advanceDay()
   },
+  onTogglePause() {
+    paused = !paused
+  },
+  onSetSpeed(speed: number) {
+    timeScale = speed
+    paused = false
+  },
   onReset() {
     clearSave()
     location.reload()
@@ -415,8 +425,9 @@ function advanceDay(): void {
 
 let last = performance.now()
 function frame(now: number): void {
-  const dt = Math.min(0.05, (now - last) / 1000)
+  const rawDt = Math.min(0.05, (now - last) / 1000)
   last = now
+  const dt = paused ? 0 : rawDt * timeScale
   tick(dt)
 
   const selected = tankById(state.selectedTankId)
@@ -424,7 +435,7 @@ function frame(now: number): void {
     renderTank(canvas, selected, SPECIES_BY_ID)
   }
 
-  ui.update(state, shopAttractiveness(state))
+  ui.update(state, shopAttractiveness(state), timeScale, paused)
   requestAnimationFrame(frame)
 }
 
