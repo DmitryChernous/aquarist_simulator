@@ -204,6 +204,78 @@ body {
   margin-bottom: 4px;
 }
 
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(4, 12, 22, 0.62);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 9vh 16px 16px;
+  overflow-y: auto;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 16px;
+}
+
+.modal-body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  flex-wrap: wrap;
+}
+
+.modal-row strong {
+  min-width: 130px;
+}
+
+.modal-row .btn {
+  margin-left: auto;
+}
+
+.btn.danger {
+  border-color: #b23b3b;
+  color: #ff9d9d;
+}
+.btn.danger:hover:not(:disabled) {
+  background: rgba(178, 59, 59, 0.15);
+}
+.btn:disabled {
+  background: var(--panel);
+  color: #5b6b7a;
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
 .tank-status {
   background: var(--panel);
   border: 1px solid var(--border);

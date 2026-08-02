@@ -47,8 +47,8 @@ export function defaultState(): GameState {
   }
   return {
     money: START_MONEY,
-    shop: { cashRegister: false, restAreas: 0, componentRacks: 0, rackInventory: [] },
-    shelves: [{ id: 'sh1', name: 'Стеллаж 1', pos: { x: 0, y: 0 }, slabs, loadCapacityL: 300, aquariums: [aq] }],
+    shop: { cashRegister: false, restAreas: 0, componentRacks: 0, rackInventory: [], shelvesInventory: [] },
+    shelves: [{ id: 'sh1', name: 'Стеллаж 1', pos: { x: 0, y: 0 }, slabs, loadCapacityL: 300, specId: 'compact', aquariums: [aq] }],
     storage: [{ id: 's1', name: 'Склад 1', kind: 'storage', stock: [] }],
     market: Object.fromEntries(FISH_SPECIES.map((s) => [s.id, 1])),
     orders: [],
@@ -129,7 +129,18 @@ export function loadState(): GameState {
       if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.shelves) || !Array.isArray(parsed.storage)) {
         return defaultState()
       }
-      return { ...defaultState(), ...parsed }
+      const base = defaultState()
+      const shelves = (parsed.shelves as any[]).map((s, i) => ({
+        ...(s as any),
+        id: s.id ?? `sh-restored-${i}`,
+        specId: (s as any).specId ?? 'compact',
+      }))
+      return {
+        ...base,
+        ...parsed,
+        shop: { ...base.shop, ...(parsed.shop ?? {}), shelvesInventory: parsed.shop?.shelvesInventory ?? [] },
+        shelves,
+      }
     }
     const legacyRaw = localStorage.getItem('aquarist-save-v3')
     if (legacyRaw) {
@@ -146,6 +157,7 @@ export function loadState(): GameState {
             restAreas: Number(old.shop?.restAreas ?? 0),
             componentRacks: Number(old.shop?.componentRacks ?? 0),
             rackInventory: Array.isArray(old.shop?.rackInventory) ? old.shop.rackInventory : [],
+            shelvesInventory: [],
           },
           shelves: [
             {
@@ -157,6 +169,7 @@ export function loadState(): GameState {
                 { id: 'slab1', width: 600, depth: 45, height: 55, slot: 1 },
               ],
               loadCapacityL: Math.max(200, aquariums.reduce((acc, a) => acc + a.volume, 0)),
+              specId: 'compact',
               aquariums,
             },
           ],

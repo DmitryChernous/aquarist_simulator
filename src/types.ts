@@ -142,6 +142,7 @@ export interface ShelfState {
   pos: { x: number; y: number }
   slabs: ShelfSlab[]
   loadCapacityL: number
+  specId: string
   aquariums: AquariumState[]
 }
 
@@ -180,6 +181,7 @@ export interface ShopState {
   restAreas: number
   componentRacks: number
   rackInventory: EquipmentId[]
+  shelvesInventory: string[] // купленные, но ещё не размещённые стеллажи
 }
 
 export type OrderKind = 'demand' | 'display'

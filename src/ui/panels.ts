@@ -9,8 +9,11 @@ import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
 import type { AquariumState, DecorKind, EquipmentId, GameState, ShelfState } from '../types'
 
 export interface UIActions {
-  onAddShelf(specId: string): void
-  onRemoveShelf(shelfId: string): void
+  onBuyShelf(specId: string): void
+  onPlaceShelf(specId: string): void
+  onUnstoreShelf(shelfId: string): void
+  onSellShelf(shelfId: string): void
+  onSellInventoryShelf(specId: string): void
   onAddStorage(): void
   onBuyShopItem(kind: 'cashRegister' | 'restArea' | 'componentRack'): void
   onAddAquarium(shelfId: string, modelId: string): void
@@ -151,10 +154,10 @@ export function buildApp(actions: UIActions) {
 
   const storageSelect = app.querySelector<HTMLSelectElement>('#storageSelect')!
   const storageCards = app.querySelector<HTMLDivElement>('.storage-cards')!
-  const storageHeader = app.querySelector<HTMLDivElement>('.storages .group-title')!
   const addStorageBtn = app.querySelector<HTMLButtonElement>('#addStorage')!
   const stockList = app.querySelector<HTMLDivElement>('.stock-list')!
   const rackPanel = app.querySelector<HTMLDivElement>('.rack-panel')!
+  const shelfInventory = app.querySelector<HTMLDivElement>('.shelf-inventory')!
 
   const aquariumSelect = app.querySelector<HTMLSelectElement>('#aquariumSelect')!
   const aquariumAtt = app.querySelector<HTMLSpanElement>('#aquariumAtt')!
@@ -181,6 +184,7 @@ export function buildApp(actions: UIActions) {
 
   let epoch = -1
   let lastFlashAt = 0
+  let latestState: GameState = null as unknown as GameState
 
   function flash(message: string): void {
     hudFlash.textContent = message
@@ -189,6 +193,7 @@ export function buildApp(actions: UIActions) {
   }
 
   function update(state: GameState, shopAtt: number, timeScale: number, paused: boolean): void {
+    latestState = state
     hudMoney.textContent = `Деньги: ${state.money}₽`
     hudDay.textContent = `День ${state.day} · ${formatGameDate(state.day)}`
     const ratio = Math.min(1, Math.max(0, state.daySeconds / DAY_DURATION_SECONDS))
@@ -218,25 +223,26 @@ export function buildApp(actions: UIActions) {
 
   function renderZal(state: GameState): void {
     hallActions.innerHTML = ''
-    const addShelf = el('button', 'btn', 'Добавить стеллаж')
-    addShelf.addEventListener('click', () => openAddShelfModal(state))
-    hallActions.append(addShelf)
-    const removeShelf = el('button', 'btn', 'Убрать стеллаж')
-    removeShelf.disabled = state.shelves.length === 0
-    removeShelf.addEventListener('click', () => openRemoveShelfModal(state))
-    hallActions.append(removeShelf)
+    const buyShelf = el('button', 'btn', 'Добавить стеллаж')
+    buyShelf.addEventListener('click', () => openAddShelfModal(state))
+    hallActions.append(buyShelf)
+    const placeShelf = el('button', 'btn', 'Разместить стеллаж')
+    placeShelf.disabled = state.shop.shelvesInventory.length === 0
+    placeShelf.title = state.shop.shelvesInventory.length > 0 ? `На складе: ${state.shop.shelvesInventory.length}` : 'На складе нет стеллажей'
+    placeShelf.addEventListener('click', () => openPlaceShelfModal(state))
+    hallActions.append(placeShelf)
 
     hallList.innerHTML = ''
     if (state.shelves.length === 0) {
       const empty = el('div', 'empty hall-empty')
-      const go = el('button', 'btn small', 'Купить стеллаж в «Обустройстве»')
-      go.addEventListener('click', () => switchTab(app, 'furni'))
-      empty.append(el('span', '', 'Зал пуст. Купите стеллаж, затем добавьте аквариум на полку.'), go)
+      const go = el('button', 'btn small', 'Купить стеллаж')
+      go.addEventListener('click', () => openAddShelfModal(state))
+      empty.append(el('span', '', 'Зал пуст. Купите стеллаж, затем разместите его и добавьте аквариум на полку.'), go)
       hallList.append(empty)
     }
     for (const shelf of state.shelves) {
       if (shelf.aquariums.length === 0) {
-        const empty = el('div', 'comp-hint', `«${shelf.name}» пуст. Добавьте аквариум на полку ниже или во «Обустройстве».`)
+        const empty = el('div', 'comp-hint', `«${shelf.name}» пуст. Добавьте аквариум на полку ниже.`)
         hallList.append(empty)
       }
       const card = el('div', 'shelf-card')
@@ -245,11 +251,9 @@ export function buildApp(actions: UIActions) {
         el('strong', '', shelf.name),
         el('span', 'shelf-meta', `занято ${shelf.aquariums.length}/${shelf.slabs.length} · загрузка ${shelfUsedLiters(shelf)}/${shelf.loadCapacityL} л`),
       )
-      const delShelf = el('button', 'btn small danger', 'Убрать стеллаж')
-      delShelf.addEventListener('click', () => {
-        if (window.confirm('Удалить стеллаж вместе со стоящими на нём аквариумами?')) actions.onRemoveShelf(shelf.id)
-      })
-      head.append(delShelf)
+      const menuBtn = el('button', 'btn small', 'Действия')
+      menuBtn.addEventListener('click', () => openShelfMenu(shelf.id, state))
+      head.append(menuBtn)
       card.append(head)
       const body = el('div', 'shelf-body')
       for (const slab of shelf.slabs) {
@@ -312,20 +316,21 @@ export function buildApp(actions: UIActions) {
       )
       const btn = el('button', 'btn small', `Купить — ${spec.price}₽`)
       btn.disabled = state.money < spec.price
-      btn.addEventListener('click', () => actions.onAddShelf(specId))
+      btn.addEventListener('click', () => actions.onBuyShelf(specId))
       card.append(btn)
       shelfStore.append(card)
     }
   }
 
   function openAddShelfModal(s: GameState): void {
-    const { body } = overlay('Добавить стеллаж')
+    const { body } = overlay('Купить стеллаж (на склад)')
+    body.append(el('div', 'comp-hint', 'Купленный стеллаж появляется на складе. Затем разместите его в зале через «Разместить стеллаж».'))
     for (const specId of Object.keys(SHELVES)) {
       const spec = SHELVES[specId as keyof typeof SHELVES]
       const row = el('div', 'modal-row')
       const btn = el('button', 'btn small', `Купить — ${spec.price}₽`)
       btn.disabled = s.money < spec.price
-      btn.addEventListener('click', () => actions.onAddShelf(specId))
+      btn.addEventListener('click', () => actions.onBuyShelf(specId))
       row.append(
         el('strong', '', spec.name),
         el('span', 'shop-desc', `${spec.slabs.length} полки · до ${spec.loadCapacityL} л`),
@@ -335,27 +340,59 @@ export function buildApp(actions: UIActions) {
     }
   }
 
-  function openRemoveShelfModal(s: GameState): void {
-    const { body } = overlay('Убрать стеллаж')
-    if (s.shelves.length === 0) {
-      body.append(el('div', 'empty', 'Стеллажей нет.'))
+  function openPlaceShelfModal(s: GameState): void {
+    const { body } = overlay('Разместить стеллаж в зале')
+    if (s.shop.shelvesInventory.length === 0) {
+      body.append(el('div', 'empty', 'На складе нет стеллажей.'))
       return
     }
-    body.append(el('div', 'comp-hint', 'Стеллаж удаляется вместе со стоящими на нём аквариумами.'))
-    for (const shelf of s.shelves) {
+    const count = new Map<string, number>()
+    for (const id of s.shop.shelvesInventory) count.set(id, (count.get(id) ?? 0) + 1)
+    body.append(el('div', 'comp-hint', 'На складе: ' + s.shop.shelvesInventory.length + ' стеллаж(ей). Выберите, что разместить.'))
+    for (const [specId, n] of count) {
+      const spec = SHELVES[specId as keyof typeof SHELVES]
       const row = el('div', 'modal-row')
-      const btn = el('button', 'btn small danger', 'Убрать')
-      btn.addEventListener('click', () => {
-        if (window.confirm(`Удалить стеллаж «${shelf.name}» вместе с ${shelf.aquariums.length} аквариумом(и)?`)) {
-          actions.onRemoveShelf(shelf.id)
-        }
-      })
+      const btn = el('button', 'btn small', 'Разместить')
+      btn.addEventListener('click', () => actions.onPlaceShelf(specId))
       row.append(
-        el('strong', '', shelf.name),
-        el('span', 'shop-desc', `${shelf.aquariums.length}/${shelf.slabs.length} занято`),
+        el('strong', '', `${spec.name} ×${n}`),
+        el('span', 'shop-desc', `${spec.slabs.length} полки · до ${spec.loadCapacityL} л`),
         btn,
       )
       body.append(row)
+    }
+    body.append(el('div', 'comp-hint', 'Нужно избавиться от лишнего? Стеллажи со склада можно продать.'))
+  }
+
+  function openShelfMenu(shelfId: string, s: GameState): void {
+    const shelf = s.shelves.find((sh) => sh.id === shelfId)
+    if (!shelf) return
+    const spec = SHELVES[shelf.specId as keyof typeof SHELVES]
+    const { body } = overlay(`Стеллаж «${shelf.name}»`)
+    body.append(el('div', 'comp-hint', `${shelf.aquariums.length}/${shelf.slabs.length} полок занято · ${shelfUsedLiters(shelf)}/${shelf.loadCapacityL} л`))
+
+    const unstore = el('button', 'btn', 'Убрать на склад')
+    unstore.disabled = shelf.aquariums.length > 0
+    if (shelf.aquariums.length > 0) unstore.title = 'Сначала уберите аквариумы с полок'
+    unstore.addEventListener('click', () => actions.onUnstoreShelf(shelf.id))
+    body.append(unstore)
+
+    const specPrice = spec ? spec.price : 0
+    const sell = el('button', 'btn danger', `Продать — ${Math.floor(specPrice * 0.5)}₽`)
+    sell.addEventListener('click', () => {
+      if (window.confirm(`Продать стеллаж «${shelf.name}»? Аквариумы (${shelf.aquariums.length}) будут удалены.`)) {
+        actions.onSellShelf(shelf.id)
+      }
+    })
+    body.append(sell)
+
+    if (shelf.aquariums.length > 0) {
+      const aqList = el('div', 'comp-list')
+      aqList.append(el('div', 'list-title', 'На стеллаже:'))
+      for (const aq of shelf.aquariums) {
+        aqList.append(el('div', 'comp-row', aq.name))
+      }
+      body.append(aqList)
     }
   }
 
@@ -546,7 +583,26 @@ export function buildApp(actions: UIActions) {
   function renderStorage(state: GameState): void {
     fillSelect(storageSelect, state.storage.map((t) => ({ value: t.id, label: t.name })), state.selectedStorageId)
     const tank = state.storage.find((t) => t.id === state.selectedStorageId)
-    storageHeader.textContent = `Склады (${state.storage.length})`
+
+    shelfInventory.innerHTML = ''
+    const inv = state.shop.shelvesInventory
+    if (inv.length === 0) {
+      shelfInventory.append(el('div', 'empty', 'Пусто. Добавьте стеллаж на экране «Зал».'))
+    } else {
+      const bySpec = new Map<string, number>()
+      for (const id of inv) bySpec.set(id, (bySpec.get(id) ?? 0) + 1)
+      for (const [specId, n] of bySpec) {
+        const spec = SHELVES[specId as keyof typeof SHELVES]
+        const row = el('div', 'comp-row')
+        row.append(el('span', 'comp-name', `${spec?.name ?? specId} ×${n}`))
+        const place = el('button', 'btn small', 'Разместить в зале')
+        place.addEventListener('click', () => actions.onPlaceShelf(specId))
+        const sell = el('button', 'btn small danger', 'Продать')
+        sell.addEventListener('click', () => actions.onSellInventoryShelf(specId))
+        row.append(place, sell)
+        shelfInventory.append(row)
+      }
+    }
     storageCards.innerHTML = ''
     for (const t of state.storage) {
       const card = el('div', 'tank-card')
@@ -635,7 +691,7 @@ export function buildApp(actions: UIActions) {
     }
   }
 
-  return { update, flash, selectTab: (tab: TabName) => switchTab(app, tab) }
+  return { update, flash, selectTab: (tab: TabName) => switchTab(app, tab), openShelfMenu: (id: string) => openShelfMenu(id, latestState) }
 }
 
 function switchTab(app: HTMLElement, tab: TabName): void {
@@ -777,6 +833,8 @@ function buildLayout(): HTMLElement {
     el('h2', 'sec-title', 'Склады'),
     el('div', 'tank-cards storage-cards'),
     addStorageButton(),
+    el('h2', 'sec-title', 'Стеллажи на складе'),
+    el('div', 'shelf-inventory'),
     el('h2', 'sec-title', 'Рыбы «на продажу»'),
     el('div', 'stock-list'),
     el('h2', 'sec-title', 'Полка для комплектующих'),

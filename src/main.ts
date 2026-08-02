@@ -85,7 +85,7 @@ function takeStock(speciesId: string, n: number): number {
 }
 
 const ui = buildApp({
-  onAddShelf(specId) {
+  onBuyShelf(specId) {
     const spec = SHELVES[specId as keyof typeof SHELVES]
     if (!spec) return
     if (state.money < spec.price) {
@@ -93,29 +93,73 @@ const ui = buildApp({
       return
     }
     state.money -= spec.price
+    state.shop.shelvesInventory.push(specId)
+    pushLog(`Куплен стеллаж «${spec.name}» за ${spec.price}₽ — на складе`, 'buy')
+    bump()
+  },
+  onPlaceShelf(specId) {
+    const spec = SHELVES[specId as keyof typeof SHELVES]
+    if (!spec) return
+    const idx = state.shop.shelvesInventory.indexOf(specId)
+    if (idx < 0) {
+      ui.flash('Такого стеллажа нет на складе!')
+      return
+    }
+    state.shop.shelvesInventory.splice(idx, 1)
     const id = uid('sh')
+    const name = `Стеллаж ${state.shelves.length + 1}`
     const shelf: ShelfState = {
       id,
-      name: spec.name,
+      name,
+      specId,
       pos: { x: 0, y: 0 },
       slabs: spec.slabs.map((sl, i) => ({ ...sl, id: `${id}-slab${i}` })),
       loadCapacityL: spec.loadCapacityL,
       aquariums: [],
     }
     state.shelves.push(shelf)
-    pushLog(`Куплен стеллаж «${spec.name}» за ${spec.price}₽`, 'buy')
+    pushLog(`Стеллаж «${spec.name}» размещён в зале`, 'info')
     bump()
   },
-  onRemoveShelf(shelfId) {
+  onUnstoreShelf(shelfId) {
     const idx = state.shelves.findIndex((s) => s.id === shelfId)
     if (idx < 0) return
     const shelf = state.shelves[idx]
+    if (shelf.aquariums.length > 0) {
+      ui.flash('Сначала уберите аквариумы со стеллажа!')
+      return
+    }
+    state.shelves.splice(idx, 1)
+    state.shop.shelvesInventory.push(shelf.specId)
+    if (state.selectedAquariumId === null || !allAquariums(state).some((a) => a.id === state.selectedAquariumId)) {
+      state.selectedAquariumId = allAquariums(state)[0]?.id ?? null
+    }
+    pushLog(`Стеллаж «${shelf.name}» убран на склад`, 'info')
+    bump()
+  },
+  onSellShelf(shelfId) {
+    const idx = state.shelves.findIndex((s) => s.id === shelfId)
+    if (idx < 0) return
+    const shelf = state.shelves[idx]
+    const spec = SHELVES[shelf.specId as keyof typeof SHELVES]
+    const refund = spec ? Math.floor(spec.price * 0.5) : 0
     const n = shelf.aquariums.length
     state.shelves.splice(idx, 1)
+    state.money += refund
     if (state.selectedAquariumId && shelf.aquariums.some((a) => a.id === state.selectedAquariumId)) {
-      state.selectedAquariumId = state.shelves[0]?.aquariums[0]?.id ?? null
+      state.selectedAquariumId = allAquariums(state)[0]?.id ?? null
     }
-    pushLog(`Убран стеллаж «${shelf.name}» (${n} аквариум(ов) и рыбы удалены)`, 'warn')
+    pushLog(`Стеллаж «${shelf.name}» продан за ${refund}₽ (${n} аквариум(ов) удалено)`, 'sell')
+    bump()
+  },
+  onSellInventoryShelf(specId) {
+    const idx = state.shop.shelvesInventory.indexOf(specId)
+    if (idx < 0) return
+    state.shop.shelvesInventory.splice(idx, 1)
+    const spec = SHELVES[specId as keyof typeof SHELVES]
+    const refund = spec ? Math.floor(spec.price * 0.5) : 0
+    state.money += refund
+    pushLog(`Стеллаж «${spec?.name}» продан со склада за ${refund}₽`, 'sell')
     bump()
   },
   onBuyShopItem(kind) {
@@ -389,6 +433,10 @@ hallCanvas.addEventListener('click', (e) => {
         ui.selectTab('aquarium')
         return
       }
+    }
+    if (sx >= shelf.x && sx <= shelf.x + shelf.w && sy >= shelf.y && sy <= shelf.y + shelf.h) {
+      ui.openShelfMenu(shelf.shelfId)
+      return
     }
   }
 })
