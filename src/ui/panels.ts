@@ -563,11 +563,17 @@ function buildLayout(): HTMLElement {
   const game = el('div', 'game')
 
   const header = el('header', 'hud')
-  const topRow = el('div', 'hud-top')
   const left = el('div', 'hud-left')
   left.append(
     el('span', 'hud-money', 'Деньги: —'),
     el('span', 'hud-day', 'День —'),
+  )
+  const progress = el('div', 'day-progress')
+  const progressFill = el('div', 'day-progress-fill')
+  const progressLabel = el('span', 'day-progress-label', '')
+  progress.append(progressFill, progressLabel)
+  left.append(progress)
+  left.append(
     el('span', 'hud-att', 'Привлекательность: —'),
     el('span', 'hud-visitors', 'Заказов: —'),
     el('span', 'hud-sales', 'Продаж: —'),
@@ -578,14 +584,7 @@ function buildLayout(): HTMLElement {
   right.append(endDayBtn)
   const resetBtn = el('button', 'btn small btn-reset', 'Сброс')
   right.append(resetBtn)
-  topRow.append(left, right)
-
-  const progress = el('div', 'day-progress')
-  const progressFill = el('div', 'day-progress-fill')
-  const progressLabel = el('span', 'day-progress-label', '')
-  progress.append(progressFill, progressLabel)
-
-  header.append(topRow, progress)
+  header.append(left, right)
 
   const nav = el('nav', 'tabs')
   nav.append(
