@@ -197,6 +197,13 @@ body {
   align-items: flex-start;
 }
 
+.hall-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
 .tank-status {
   background: var(--panel);
   border: 1px solid var(--border);

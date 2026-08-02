@@ -146,6 +146,7 @@ export function buildApp(actions: UIActions) {
   const shopEquipment = app.querySelector<HTMLDivElement>('.shop-equipment')!
   const shelfStore = app.querySelector<HTMLDivElement>('.shelf-store')!
   const hallList = app.querySelector<HTMLDivElement>('.hall-list')!
+  const hallActions = app.querySelector<HTMLDivElement>('.hall-actions')!
   const ordersPanel = app.querySelector<HTMLDivElement>('.orders-panel')!
 
   const storageSelect = app.querySelector<HTMLSelectElement>('#storageSelect')!
@@ -216,6 +217,15 @@ export function buildApp(actions: UIActions) {
   }
 
   function renderZal(state: GameState): void {
+    hallActions.innerHTML = ''
+    const addShelf = el('button', 'btn', 'Добавить стеллаж')
+    addShelf.addEventListener('click', () => openAddShelfModal(state))
+    hallActions.append(addShelf)
+    const removeShelf = el('button', 'btn', 'Убрать стеллаж')
+    removeShelf.disabled = state.shelves.length === 0
+    removeShelf.addEventListener('click', () => openRemoveShelfModal(state))
+    hallActions.append(removeShelf)
+
     hallList.innerHTML = ''
     if (state.shelves.length === 0) {
       const empty = el('div', 'empty hall-empty')
@@ -305,6 +315,47 @@ export function buildApp(actions: UIActions) {
       btn.addEventListener('click', () => actions.onAddShelf(specId))
       card.append(btn)
       shelfStore.append(card)
+    }
+  }
+
+  function openAddShelfModal(s: GameState): void {
+    const { body } = overlay('Добавить стеллаж')
+    for (const specId of Object.keys(SHELVES)) {
+      const spec = SHELVES[specId as keyof typeof SHELVES]
+      const row = el('div', 'modal-row')
+      const btn = el('button', 'btn small', `Купить — ${spec.price}₽`)
+      btn.disabled = s.money < spec.price
+      btn.addEventListener('click', () => actions.onAddShelf(specId))
+      row.append(
+        el('strong', '', spec.name),
+        el('span', 'shop-desc', `${spec.slabs.length} полки · до ${spec.loadCapacityL} л`),
+        btn,
+      )
+      body.append(row)
+    }
+  }
+
+  function openRemoveShelfModal(s: GameState): void {
+    const { body } = overlay('Убрать стеллаж')
+    if (s.shelves.length === 0) {
+      body.append(el('div', 'empty', 'Стеллажей нет.'))
+      return
+    }
+    body.append(el('div', 'comp-hint', 'Стеллаж удаляется вместе со стоящими на нём аквариумами.'))
+    for (const shelf of s.shelves) {
+      const row = el('div', 'modal-row')
+      const btn = el('button', 'btn small danger', 'Убрать')
+      btn.addEventListener('click', () => {
+        if (window.confirm(`Удалить стеллаж «${shelf.name}» вместе с ${shelf.aquariums.length} аквариумом(и)?`)) {
+          actions.onRemoveShelf(shelf.id)
+        }
+      })
+      row.append(
+        el('strong', '', shelf.name),
+        el('span', 'shop-desc', `${shelf.aquariums.length}/${shelf.slabs.length} занято`),
+        btn,
+      )
+      body.append(row)
     }
   }
 
@@ -663,6 +714,7 @@ function buildLayout(): HTMLElement {
     el('h2', 'sec-title', 'Выставочный зал'),
     buildHallCanvas(),
     el('h2', 'sec-title', 'Управление стеллажами'),
+    el('div', 'hall-actions'),
     el('div', 'hall-list'),
   )
 
