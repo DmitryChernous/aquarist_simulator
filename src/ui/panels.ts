@@ -30,6 +30,10 @@ export interface UIActions {
   onEquipmentSetting(aqId: string, eqId: EquipmentId, paramId: string, value: number): void
   onAddDecor(aqId: string, kind: DecorKind): void
   onRemoveDecor(aqId: string, decorId: string): void
+  onBuyDecor(kind: DecorKind): void
+  onPlaceDecorFromRack(kind: DecorKind, aqId: string): void
+  onSellRackDecor(kind: DecorKind): void
+  onSellRackEquipment(id: EquipmentId): void
   onStockToAquarium(speciesId: string, aqId: string, count: number): void
   onMoveToStorage(aqId: string, fishId: string): void
   onBuyFishToStorage(speciesId: string, storageId: string): void
@@ -168,6 +172,9 @@ export function buildApp(actions: UIActions) {
 
   const storeDest = app.querySelector<HTMLSelectElement>('#storeDest')!
   const storeGrid = app.querySelector<HTMLDivElement>('.store-grid')!
+  const decorStore = app.querySelector<HTMLDivElement>('.decor-store')!
+  const equipStore = app.querySelector<HTMLDivElement>('.equip-store')!
+  const storeTabs = Array.from(app.querySelectorAll<HTMLButtonElement>('.store-tabs .seg-btn'))
   const logList = app.querySelector<HTMLUListElement>('.log-list')!
 
   app.querySelector<HTMLButtonElement>('.btn-reset')!.addEventListener('click', () => actions.onReset())
@@ -178,6 +185,14 @@ export function buildApp(actions: UIActions) {
   addStorageBtn.addEventListener('click', () => {
     if (window.confirm('Добавить склад за 150₽?')) actions.onAddStorage()
   })
+  function setStoreSection(v: 'fish' | 'decor' | 'equip'): void {
+    for (const b of storeTabs) b.classList.toggle('active', b.dataset.store === v)
+    storeGrid.style.display = v === 'fish' ? '' : 'none'
+    decorStore.style.display = v === 'decor' ? '' : 'none'
+    equipStore.style.display = v === 'equip' ? '' : 'none'
+  }
+  for (const b of storeTabs) b.addEventListener('click', () => setStoreSection((b.dataset.store as 'fish' | 'decor' | 'equip') ?? 'fish'))
+  setStoreSection('fish')
   setupTabs(app)
 
   let epoch = -1
@@ -697,23 +712,129 @@ export function buildApp(actions: UIActions) {
     }
 
     rackPanel.innerHTML = ''
-    const capacity = rackCapacity(state.shop)
-    rackPanel.append(el('div', 'comp-hint', `Полка для комплектующих: занято ${state.shop.rackInventory.length} из ${capacity} мест`))
-    for (const eid of EQUIPMENT_IDS) {
+    const renderRackPanel = () => {
+      rackPanel.innerHTML = ''
+      const capacity = rackCapacity(state.shop)
+      const headerRow = el('div', 'rack-head')
+      headerRow.append(el('div', 'comp-hint', `Полка для комплектующих: занято ${state.shop.rackInventory.length} из ${capacity} мест`))
+      const goShop = el('button', 'btn small', 'Открыть магазин')
+      goShop.addEventListener('click', () => {
+        setStoreSection('equip')
+        switchTab(app, 'store')
+      })
+      headerRow.append(goShop)
+      rackPanel.append(headerRow)
+
+      const controlRow = el('div', 'rack-tools')
+      const catSel = el('select')
+      catSel.className = 'rack-filter'
+      const CATS: { value: string; label: string }[] = [
+        { value: 'all', label: 'Всё оборудование' },
+        { value: 'decor', label: 'Только декор' },
+        ...EQUIPMENT_IDS.map((id) => ({ value: id, label: EQUIPMENT[id].name })),
+      ]
+      fillSelect(catSel, CATS, rackFilter)
+      catSel.addEventListener('change', () => {
+        rackFilter = catSel.value
+        renderRackPanel()
+      })
+      const sortSel = el('select')
+      sortSel.className = 'rack-sort'
+      const SORTS: { value: string; label: string }[] = [
+        { value: 'name', label: 'Сорт: по имени' },
+        { value: 'price', label: 'Сорт: по цене ↑' },
+        { value: 'priceDesc', label: 'Сорт: по цене ↓' },
+        { value: 'count', label: 'Сорт: по количеству' },
+      ]
+      fillSelect(sortSel, SORTS, rackSort)
+      sortSel.addEventListener('change', () => {
+        rackSort = sortSel.value
+        renderRackPanel()
+      })
+      controlRow.append(catSel, sortSel)
+      rackPanel.append(controlRow)
+      rackPanel.append(renderRackList(state))
+    }
+    renderRackPanel()
+  }
+
+  let rackFilter = 'all'
+  let rackSort = 'name'
+
+  function renderRackList(state: GameState): HTMLElement {
+    const list = el('div', 'rack-list')
+    type Row = { label: string; price: number; count: number; kind: 'equip' | 'decor'; id: string }
+    const rows: Row[] = []
+    const eqCount = new Map<EquipmentId, number>()
+    for (const eid of state.shop.rackInventory) eqCount.set(eid, (eqCount.get(eid) ?? 0) + 1)
+    for (const [eid, count] of eqCount) {
+      if (rackFilter !== 'all' && rackFilter !== 'decor' && rackFilter !== eid) continue
       const def = EQUIPMENT[eid]
-      const owned = state.shop.rackInventory.filter((c) => c === eid).length
-      const row = el('div', 'comp-row')
-      const btn = el('button', 'btn small', `Купить — ${def.price}₽`)
-      btn.disabled = state.money < def.price || state.shop.rackInventory.length >= capacity
-      btn.addEventListener('click', () => actions.onBuyEquipment(eid))
-      row.append(el('span', 'comp-name', `${def.name} (в наличии: ${owned})`), btn)
-      rackPanel.append(row)
+      rows.push({ label: def.name, price: def.price, count, kind: 'equip', id: eid })
+    }
+    if (rackFilter === 'all' || rackFilter === 'decor') {
+      const dec = new Map<DecorKind, number>()
+      for (const k of state.shop.rackDecor) dec.set(k, (dec.get(k) ?? 0) + 1)
+      for (const [kind, count] of dec) {
+        rows.push({ label: DECOR[kind].name, price: DECOR[kind].price, count, kind: 'decor', id: kind })
+      }
+    }
+    const by = (cmp: (a: Row, b: Row) => number) => rows.sort(cmp)
+    if (rackSort === 'price') by((a, b) => a.price - b.price || a.label.localeCompare(b.label))
+    else if (rackSort === 'priceDesc') by((a, b) => b.price - a.price || a.label.localeCompare(b.label))
+    else if (rackSort === 'count') by((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    else by((a, b) => a.label.localeCompare(b.label))
+
+    if (rows.length === 0) {
+      list.append(el('div', 'empty', 'На полке ничего нет.'))
+      return list
+    }
+    for (const row of rows) {
+      const item = el('div', 'comp-row')
+      item.append(el('span', 'comp-name', `${row.label} ×${row.count}`))
+      const sell = el('button', 'btn small danger', `Продать (${Math.floor(row.price * 0.5)}₽)`)
+      sell.addEventListener('click', () => {
+        if (row.kind === 'equip') actions.onSellRackEquipment(row.id as EquipmentId)
+        else actions.onSellRackDecor(row.id as DecorKind)
+      })
+      const install = el('button', 'btn small', row.kind === 'equip' ? 'Установить' : 'Разместить')
+      install.addEventListener('click', () => openRackInstallModal(state, row.kind, row.id as EquipmentId, row.id as DecorKind))
+      item.append(sell, install)
+      list.append(item)
+    }
+    return list
+  }
+
+  function openRackInstallModal(s: GameState, kind: 'equip' | 'decor', eid: EquipmentId, dkind: DecorKind): void {
+    const all = allAquariums(s)
+    const { body } = overlay(kind === 'equip' ? 'Установить оборудование' : 'Разместить декор')
+    if (all.length === 0) {
+      body.append(el('div', 'empty', 'Нет аквариумов. Добавьте аквариум на стеллаж.'))
+      return
+    }
+    body.append(el('div', 'comp-hint', kind === 'equip' ? 'Выберите аквариум для установки:' : 'Выберите аквариум для декора:'))
+    for (const aq of all) {
+      const row = el('div', 'modal-row')
+      const full = aq.equipment.length >= 4
+      const name = el('strong', '', `${aq.name} (${aq.volume} л)`)
+      const btn = el('button', 'btn small', kind === 'equip' ? 'Установить' : 'Разместить')
+      btn.disabled = kind === 'equip' && (full || aq.equipment.some((x) => x.id === eid))
+      btn.addEventListener('click', () => {
+        if (kind === 'equip') actions.onInstallEquipment(eid, aq.id)
+        else actions.onPlaceDecorFromRack(dkind, aq.id)
+      })
+      row.append(name, el('span', 'comp-hint', kind === 'equip' && full ? 'слоты заполнены' : ''), btn)
+      body.append(row)
     }
   }
 
   function renderStore(state: GameState): void {
     fillSelect(storeDest, state.storage.map((t) => ({ value: t.id, label: t.name })), state.selectedStorageId)
+
     storeGrid.innerHTML = ''
+    equipStore.innerHTML = ''
+    decorStore.innerHTML = ''
+
     for (const species of FISH_SPECIES) {
       const factor = state.market[species.id] ?? 1
       const card = el('div', 'store-card')
@@ -742,6 +863,49 @@ export function buildApp(actions: UIActions) {
       buyBtn.addEventListener('click', () => actions.onBuyFishToStorage(species.id, storeDest.value))
       card.append(buyBtn)
       storeGrid.append(card)
+    }
+
+    for (const kind of DECOR_KINDS) {
+      const def = DECOR[kind]
+      const card = el('div', 'store-card')
+      const head = el('div', 'store-head')
+      head.append(el('strong', 'store-name', def.name))
+      card.append(
+        head,
+        el('div', 'store-desc', def.desc),
+        (() => {
+          const p = el('div', 'store-prices')
+          p.append(el('span', '', `Привлекательность: +${def.attract}`))
+          return p
+        })(),
+      )
+      const btn = el('button', 'btn buy', `Купить в склад — ${def.price}₽`)
+      btn.disabled = state.money < def.price
+      btn.addEventListener('click', () => actions.onBuyDecor(kind))
+      card.append(btn)
+      decorStore.append(card)
+    }
+
+    for (const eid of EQUIPMENT_IDS) {
+      const def = EQUIPMENT[eid]
+      const owned = state.shop.rackInventory.filter((c) => c === eid).length
+      const card = el('div', 'store-card')
+      const head2 = el('div', 'store-head')
+      head2.append(el('strong', 'store-name', def.name))
+      card.append(
+        head2,
+        el('div', 'store-desc', def.desc),
+        (() => {
+          const p = el('div', 'store-prices')
+          p.append(el('span', '', `На складе: ${owned}`))
+          return p
+        })(),
+      )
+      const btn = el('button', 'btn buy', `Купить в склад — ${def.price}₽`)
+      btn.disabled = state.money < def.price || state.shop.rackInventory.length >= rackCapacity(state.shop)
+      btn.addEventListener('click', () => actions.onBuyEquipment(eid))
+      card.append(btn)
+      equipStore.append(card)
     }
   }
 
@@ -775,6 +939,13 @@ function tabButton(name: TabName, label: string, active: boolean): HTMLButtonEle
   btn.textContent = label
   btn.dataset.tab = name
   if (active) btn.classList.add('active')
+  return btn
+}
+
+function segBtn(store: string, label: string): HTMLButtonElement {
+  const btn = el('button', 'seg-btn')
+  btn.textContent = label
+  btn.dataset.store = store
   return btn
 }
 
@@ -904,7 +1075,16 @@ function buildLayout(): HTMLElement {
   const storeDest = el('select')
   storeDest.id = 'storeDest'
   storeBar.append(storeDest)
-  storeTab.append(storeBar, el('div', 'store-grid'))
+  const storeTabs = el('div', 'store-tabs')
+  storeTabs.append(
+    segBtn('fish', 'Рыбы'),
+    segBtn('decor', 'Декор'),
+    segBtn('equip', 'Оборудование'),
+  )
+  const fishStore = el('div', 'store-grid')
+  const decorStore = el('div', 'decor-store')
+  const equipStore = el('div', 'equip-store')
+  storeTab.append(storeBar, storeTabs, fishStore, decorStore, equipStore)
 
   main.append(zalTab, aquariumTab, storageTab, storeTab, ordersTab, furnTab)
 

@@ -180,7 +180,8 @@ export interface ShopState {
   cashRegister: boolean
   restAreas: number
   componentRacks: number
-  rackInventory: EquipmentId[]
+  rackInventory: EquipmentId[] // оборудование на полке склада
+  rackDecor: DecorKind[] // декорации на складе
   shelvesInventory: string[] // купленные, но ещё не размещённые стеллажи
 }
 

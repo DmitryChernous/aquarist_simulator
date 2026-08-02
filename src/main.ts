@@ -295,6 +295,16 @@ const ui = buildApp({
     pushLog(`${def.name} продан с «${aq.name}» за ${refund}₽`, 'sell')
     bump()
   },
+  onSellRackEquipment(id) {
+    const idx = state.shop.rackInventory.indexOf(id)
+    if (idx < 0) return
+    state.shop.rackInventory.splice(idx, 1)
+    const def = EQUIPMENT[id]
+    const refund = Math.floor(def.price * 0.5)
+    state.money += refund
+    pushLog(`${def.name} продан со склада за ${refund}₽`, 'sell')
+    bump()
+  },
   onMaintain(aqId: string, kind: 'water' | 'bacteria' | 'clean' | 'temp' | 'light', value?: number) {
     const aq = aquariumById(aqId)
     if (!aq) return
@@ -342,6 +352,48 @@ const ui = buildApp({
     if (kind === 'stone') aq.water.gh = Math.min(20, aq.water.gh + 0.5)
     if (kind === 'driftwood') aq.water.ph = Math.max(5, aq.water.ph - 0.05)
     pushLog(`Добавлена декорация «${def.name}» в «${aq.name}»`, 'info')
+    bump()
+  },
+  onPlaceDecorFromRack(kind, aqId) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    const idx = state.shop.rackDecor.indexOf(kind)
+    if (idx < 0) {
+      ui.flash('Декорации нет на складе!')
+      return
+    }
+    state.shop.rackDecor.splice(idx, 1)
+    const d: AquariumState['decor'][number] = {
+      id: uid('d'),
+      kind,
+      x: 0.08 + Math.random() * 0.84,
+      y: 0.08 + Math.random() * 0.6,
+    }
+    aq.decor.push(d)
+    if (kind === 'stone') aq.water.gh = Math.min(20, aq.water.gh + 0.5)
+    if (kind === 'driftwood') aq.water.ph = Math.max(5, aq.water.ph - 0.05)
+    pushLog(`Из склада установлена декорация «${DECOR[kind].name}» в «${aq.name}»`, 'info')
+    bump()
+  },
+  onSellRackDecor(kind) {
+    const idx = state.shop.rackDecor.indexOf(kind)
+    if (idx < 0) return
+    state.shop.rackDecor.splice(idx, 1)
+    const def = DECOR[kind]
+    const refund = Math.floor(def.price * 0.5)
+    state.money += refund
+    pushLog(`Декорация «${def.name}» продана со склада за ${refund}₽`, 'sell')
+    bump()
+  },
+  onBuyDecor(kind) {
+    const def = DECOR[kind]
+    if (state.money < def.price) {
+      ui.flash('Не хватает денег!')
+      return
+    }
+    state.money -= def.price
+    state.shop.rackDecor.push(kind)
+    pushLog(`Куплена декорация «${def.name}» за ${def.price}₽ — на склад`, 'buy')
     bump()
   },
   onRemoveDecor(aqId, decorId) {

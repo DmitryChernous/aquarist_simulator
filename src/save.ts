@@ -47,7 +47,14 @@ export function defaultState(): GameState {
   }
   return {
     money: START_MONEY,
-    shop: { cashRegister: false, restAreas: 0, componentRacks: 0, rackInventory: [], shelvesInventory: [] },
+    shop: {
+      cashRegister: false,
+      restAreas: 0,
+      componentRacks: 1,
+      rackInventory: ['heater', 'thermometer', 'airPump', 'filter'],
+      rackDecor: [],
+      shelvesInventory: [],
+    },
     shelves: [{ id: 'sh1', name: 'Стеллаж 1', pos: { x: 0, y: 0 }, slabs, loadCapacityL: 300, specId: 'compact', aquariums: [aq] }],
     storage: [{ id: 's1', name: 'Склад 1', kind: 'storage', stock: [] }],
     market: Object.fromEntries(FISH_SPECIES.map((s) => [s.id, 1])),
@@ -138,7 +145,12 @@ export function loadState(): GameState {
       return {
         ...base,
         ...parsed,
-        shop: { ...base.shop, ...(parsed.shop ?? {}), shelvesInventory: parsed.shop?.shelvesInventory ?? [] },
+        shop: {
+          ...base.shop,
+          ...(parsed.shop ?? {}),
+          shelvesInventory: parsed.shop?.shelvesInventory ?? [],
+          rackDecor: parsed.shop?.rackDecor ?? base.shop.rackDecor,
+        },
         shelves,
       }
     }
@@ -157,6 +169,7 @@ export function loadState(): GameState {
             restAreas: Number(old.shop?.restAreas ?? 0),
             componentRacks: Number(old.shop?.componentRacks ?? 0),
             rackInventory: Array.isArray(old.shop?.rackInventory) ? old.shop.rackInventory : [],
+            rackDecor: Array.isArray(old.shop?.rackDecor) ? old.shop.rackDecor : [],
             shelvesInventory: [],
           },
           shelves: [
