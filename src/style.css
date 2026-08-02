@@ -53,6 +53,8 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
+  align-self: center;
+  flex-shrink: 0;
 }
 
 .day-progress-fill {
@@ -60,18 +62,6 @@ body {
   width: 0;
   background: linear-gradient(90deg, var(--accent), var(--ok));
   transition: width 0.2s linear;
-}
-
-.day-progress-label {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  font-weight: 700;
-  color: #dbe9f5;
-  letter-spacing: 0.2px;
 }
 
 .hud-left {

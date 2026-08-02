@@ -93,7 +93,6 @@ export function buildApp(actions: UIActions) {
   const hudSales = app.querySelector<HTMLSpanElement>('.hud-sales')!
   const hudFlash = app.querySelector<HTMLSpanElement>('.hud-flash')!
   const dayProgressFill = app.querySelector<HTMLDivElement>('.day-progress-fill')!
-  const dayProgressLabel = app.querySelector<HTMLSpanElement>('.day-progress-label')!
 
   const displaySelect = app.querySelector<HTMLSelectElement>('#displaySelect')!
   const storageSelect = app.querySelector<HTMLSelectElement>('#storageSelect')!
@@ -161,8 +160,6 @@ export function buildApp(actions: UIActions) {
     hudDay.textContent = `День ${state.day} · ${formatGameDate(state.day)}`
     const ratio = Math.min(1, Math.max(0, state.daySeconds / DAY_DURATION_SECONDS))
     dayProgressFill.style.width = `${Math.round(ratio * 100)}%`
-    const remain = Math.max(0, Math.ceil(DAY_DURATION_SECONDS - state.daySeconds))
-    dayProgressLabel.textContent = `${Math.floor(state.daySeconds)}с / ${DAY_DURATION_SECONDS}с · осталось ${remain}с`
     hudAtt.textContent = `Привлекательность зала: ${shopAtt}/100`
     hudAtt.classList.toggle('good', shopAtt >= 60)
     hudAtt.classList.toggle('mid', shopAtt >= 30 && shopAtt < 60)
@@ -570,8 +567,7 @@ function buildLayout(): HTMLElement {
   )
   const progress = el('div', 'day-progress')
   const progressFill = el('div', 'day-progress-fill')
-  const progressLabel = el('span', 'day-progress-label', '')
-  progress.append(progressFill, progressLabel)
+  progress.append(progressFill)
   left.append(progress)
   left.append(
     el('span', 'hud-att', 'Привлекательность: —'),
