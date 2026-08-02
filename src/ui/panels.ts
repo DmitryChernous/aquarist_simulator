@@ -538,43 +538,59 @@ export function buildApp(actions: UIActions) {
   }
 
   function openEquipmentModal(s: GameState, aqId: string): void {
-    const aq = allAquariums(s).find((a) => a.id === aqId)
-    if (!aq) return
-    const { body } = overlay(`Оборудование: «${aq.name}»`)
+    const aqName = allAquariums(s).find((a) => a.id === aqId)?.name ?? ''
+    const { body } = overlay(`Оборудование: «${aqName}»`)
 
-    body.append(el('div', 'list-title', 'Установлено'))
-    if (aq.equipment.length === 0) body.append(el('div', 'empty', 'Нет установленного оборудования.'))
-    for (const inst of aq.equipment) {
-      const def = EQUIPMENT[inst.id]
-      const block = el('div', 'comp-row')
-      block.append(el('span', 'comp-name', def.name))
-      const rack = el('button', 'btn small', 'На склад')
-      rack.addEventListener('click', () => actions.onRemoveEquipment(inst.id, aq.id))
-      const sellEq = el('button', 'btn small danger', `Продать (${Math.floor(def.price * 0.5)}₽)`)
-      sellEq.addEventListener('click', () => actions.onSellEquipment(inst.id, aq.id))
-      block.append(rack, sellEq)
-      body.append(block)
-      for (const p of def.params) {
-        body.append(
-          slider(p.label, p.min, p.max, p.step, inst.settings[p.id] ?? p.default, (v) =>
-            actions.onEquipmentSetting(aq.id, inst.id, p.id, v),
-          ),
-        )
+    const render = (): void => {
+      const aq = allAquariums(s).find((a) => a.id === aqId)
+      if (!aq) return
+      body.innerHTML = ''
+
+      body.append(el('div', 'list-title', 'Установлено'))
+      if (aq.equipment.length === 0) body.append(el('div', 'empty', 'Нет установленного оборудования.'))
+      for (const inst of aq.equipment) {
+        const def = EQUIPMENT[inst.id]
+        const block = el('div', 'comp-row')
+        block.append(el('span', 'comp-name', def.name))
+        const rack = el('button', 'btn small', 'На склад')
+        rack.addEventListener('click', () => {
+          actions.onRemoveEquipment(inst.id, aq.id)
+          render()
+        })
+        const sellEq = el('button', 'btn small danger', `Продать (${Math.floor(def.price * 0.5)}₽)`)
+        sellEq.addEventListener('click', () => {
+          actions.onSellEquipment(inst.id, aq.id)
+          render()
+        })
+        block.append(rack, sellEq)
+        body.append(block)
+        for (const p of def.params) {
+          body.append(
+            slider(p.label, p.min, p.max, p.step, inst.settings[p.id] ?? p.default, (v) =>
+              actions.onEquipmentSetting(aq.id, inst.id, p.id, v),
+            ),
+          )
+        }
+      }
+
+      body.append(el('div', 'list-title', 'На складе'))
+      if (s.shop.rackInventory.length === 0) {
+        body.append(el('div', 'empty', 'На складе нет оборудования. Купите на вкладке «Склад».'))
+      }
+      for (const eid of s.shop.rackInventory) {
+        const def = EQUIPMENT[eid]
+        const row = el('div', 'comp-row')
+        const btn = el('button', 'btn small', 'Установить')
+        btn.addEventListener('click', () => {
+          actions.onInstallEquipment(eid, aq.id)
+          render()
+        })
+        row.append(el('span', 'comp-name', def.name), btn)
+        body.append(row)
       }
     }
 
-    body.append(el('div', 'list-title', 'На полке (склад)'))
-    if (s.shop.rackInventory.length === 0) {
-      body.append(el('div', 'empty', 'На полке нет оборудования. Купите на вкладке «Склад».'))
-    }
-    for (const eid of s.shop.rackInventory) {
-      const def = EQUIPMENT[eid]
-      const row = el('div', 'comp-row')
-      const btn = el('button', 'btn small', 'Установить')
-      btn.addEventListener('click', () => actions.onInstallEquipment(eid, aq.id))
-      row.append(el('span', 'comp-name', def.name), btn)
-      body.append(row)
-    }
+    render()
   }
 
   function openDecorModal(s: GameState, aqId: string): void {
