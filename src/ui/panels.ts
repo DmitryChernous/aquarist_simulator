@@ -4,7 +4,7 @@ import { EQUIPMENT, EQUIPMENT_IDS, SHELVES, rackCapacity, shelfLoadLeft, shelfUs
 import { DECOR, DECOR_KINDS } from '../data/decor'
 import { tankAttractiveness } from '../sim/buyers'
 import { availableStock, buyPrice, retailPrice, stockTotal, wholesalePrice } from '../sim/economy'
-import { canStock, vegetationOf } from '../sim/aquarium'
+import { canStock, vegetationOf, ROOM_TEMP } from '../sim/aquarium'
 import { fishWellbeing } from '../sim/wellbeing'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
 import type { AquariumState, DecorKind, EquipmentId, GameState, ShelfState } from '../types'
@@ -493,9 +493,14 @@ export function buildApp(actions: UIActions) {
     aqInfo.append(el('div', 'aq-keys', aq.name))
     aqInfo.append(el('div', 'aq-line', `Объём ${aq.volume} л (${aq.w}×${aq.d}×${aq.h} см)`))
     const w = aq.water
+    const hasThermo = aq.equipment.some((e) => e.id === 'thermometer')
+    const tempLine = hasThermo
+      ? `Температура: ${w.temperature.toFixed(1)} °C`
+      : 'Температура: ? (нужен термометр)'
     aqInfo.append(
       el('div', 'list-title', 'Вода'),
-      el('div', 'aq-line', `Температура: ${w.temperature.toFixed(1)} °C`),
+      el('div', 'aq-line', tempLine),
+      el('div', 'aq-line', `Комнатная: ${ROOM_TEMP} °C`),
       el('div', 'aq-line', `pH: ${w.ph.toFixed(1)} · GH: ${w.gh.toFixed(1)} °dH`),
       el('div', 'aq-line', `O₂: ${Math.round(w.o2)}% · Свет: ${Math.round(w.light)}%`),
     )
@@ -536,8 +541,6 @@ export function buildApp(actions: UIActions) {
     const aq = allAquariums(s).find((a) => a.id === aqId)
     if (!aq) return
     const { body } = overlay(`Оборудование: «${aq.name}»`)
-    const freeSlots = 4 - aq.equipment.length
-    body.append(el('div', 'comp-hint', `Слоты: ${aq.equipment.length}/4 (свободно ${freeSlots})`))
 
     body.append(el('div', 'list-title', 'Установлено'))
     if (aq.equipment.length === 0) body.append(el('div', 'empty', 'Нет установленного оборудования.'))
@@ -568,7 +571,6 @@ export function buildApp(actions: UIActions) {
       const def = EQUIPMENT[eid]
       const row = el('div', 'comp-row')
       const btn = el('button', 'btn small', 'Установить')
-      btn.disabled = aq.equipment.length >= 4 || aq.equipment.some((x) => x.id === eid)
       btn.addEventListener('click', () => actions.onInstallEquipment(eid, aq.id))
       row.append(el('span', 'comp-name', def.name), btn)
       body.append(row)
@@ -710,34 +712,62 @@ export function buildApp(actions: UIActions) {
     if (!aq) return
     const heater = aq.equipment.find((e) => e.id === 'heater')
     const lamp = aq.equipment.find((e) => e.id === 'light')
-    // Эффективные значения: с оборудованием — его настройки, иначе вода напрямую.
-    const curTemp = heater ? heater.settings.target ?? aq.water.temperature : aq.water.temperature
-    const curLight = lamp ? lamp.settings.intensity ?? aq.water.light : aq.water.light
+    const hasHeater = Boolean(heater)
+    const hasLamp = Boolean(lamp)
+
+    const curTemp = heater ? heater.settings.target ?? ROOM_TEMP : ROOM_TEMP
+    const curLight = lamp ? lamp.settings.intensity ?? 0 : 0
 
     let newTemp = curTemp
     let newLight = curLight
     const refreshApply = () => {
-      apply.disabled = Math.abs(newTemp - curTemp) < 0.01 && Math.abs(newLight - curLight) < 0.01
+      const tChanged = hasHeater && Math.abs(newTemp - curTemp) > 0.01
+      const lChanged = hasLamp && Math.abs(newLight - curLight) > 0.01
+      apply.disabled = !tChanged && !lChanged
     }
 
     const { body } = overlay(`Обслуживание: «${aq.name}»`)
     body.append(
       el('div', 'list-title', 'Условия воды'),
-      slider('Температура', 15, 35, 0.5, curTemp, (v) => {
-        newTemp = v
-        refreshApply()
-      }),
-      slider('Освещённость', 0, 100, 1, curLight, (v) => {
-        newLight = v
-        refreshApply()
-      }),
+      el('div', 'aq-line', `Комнатная температура: ${ROOM_TEMP} °C`),
     )
-    const applyHint = el('div', 'comp-hint', 'Ползунки задают целевые настройки. Без нагревателя/освещения применяются к воде напрямую.')
-    body.append(applyHint)
+
+    const tempSlider = slider('Температура', 15, 40, 0.5, curTemp, (v) => {
+      newTemp = v
+      refreshApply()
+    })
+    if (!hasHeater) {
+      tempSlider.classList.add('slider-disabled')
+      const inp = tempSlider.querySelector('input')
+      if (inp) inp.disabled = true
+    }
+    const tempBlock = el('div', 'slider-block')
+    tempBlock.append(tempSlider)
+    body.append(tempBlock)
+    if (!hasHeater) {
+      body.append(el('div', 'comp-hint', 'Нет нагревателя — температуру регулировать нельзя. Без него вода стремится к комнаной.'))
+    }
+
+    const lightSlider = slider('Освещённость', 0, 100, 1, curLight, (v) => {
+      newLight = v
+      refreshApply()
+    })
+    if (!hasLamp) {
+      lightSlider.classList.add('slider-disabled')
+      const inp = lightSlider.querySelector('input')
+      if (inp) inp.disabled = true
+    }
+    const lightBlock = el('div', 'slider-block')
+    lightBlock.append(lightSlider)
+    body.append(lightBlock)
+    if (!hasLamp) {
+      body.append(el('div', 'comp-hint', 'Нет светильника — освещённость регулировать нельзя.'))
+    }
+
     const apply = el('button', 'btn', 'Применить')
     apply.addEventListener('click', () => {
-      actions.onMaintain(aq.id, 'temp', newTemp)
-      actions.onMaintain(aq.id, 'light', newLight)
+      if (hasHeater && Math.abs(newTemp - curTemp) > 0.01) actions.onMaintain(aq.id, 'temp', newTemp)
+      if (hasLamp && Math.abs(newLight - curLight) > 0.01) actions.onMaintain(aq.id, 'light', newLight)
     })
     refreshApply()
     body.append(apply)
@@ -916,15 +946,13 @@ export function buildApp(actions: UIActions) {
     body.append(el('div', 'comp-hint', kind === 'equip' ? 'Выберите аквариум для установки:' : 'Выберите аквариум для декора:'))
     for (const aq of all) {
       const row = el('div', 'modal-row')
-      const full = aq.equipment.length >= 4
       const name = el('strong', '', `${aq.name} (${aq.volume} л)`)
       const btn = el('button', 'btn small', kind === 'equip' ? 'Установить' : 'Разместить')
-      btn.disabled = kind === 'equip' && (full || aq.equipment.some((x) => x.id === eid))
       btn.addEventListener('click', () => {
         if (kind === 'equip') actions.onInstallEquipment(eid, aq.id)
         else actions.onPlaceDecorFromRack(dkind, aq.id)
       })
-      row.append(name, el('span', 'comp-hint', kind === 'equip' && full ? 'слоты заполнены' : ''), btn)
+      row.append(name, el('span', 'comp-hint', kind === 'equip' ? 'без ограничений по слоту' : ''), btn)
       body.append(row)
     }
   }

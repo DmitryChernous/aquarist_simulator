@@ -49,8 +49,19 @@ export function fishWellbeing(species: FishSpecies, fish: FishInstance, aq: Aqua
   const conditions = (temp + o2 + ph + gh + light + vegetation) / 6
   const wellbeing = clamp(conditions * 0.4 + crowding * 0.15 + hunger * 0.25 + to(fish.health) * 0.2, 0, 100)
 
-  const bars: NeedBar[] = [
-    { id: 'temp', label: 'Температура воды', score: temp, status: statusOf(temp), note: `${aq.water.temperature.toFixed(1)} °C (нужно ${species.tempMin}–${species.tempMax})` },
+  const thermo = aq.equipment.some((e) => e.id === 'thermometer')
+    const tempNote = thermo
+      ? `${aq.water.temperature.toFixed(1)} °C (нужно ${species.tempMin}–${species.tempMax})`
+      : 'неизвестно (установите термометр)'
+    const tempBar: NeedBar = {
+      id: 'temp',
+      label: 'Температура воды',
+      score: thermo ? temp : 0,
+      status: thermo ? statusOf(temp) : 'warn',
+      note: tempNote,
+    }
+    const bars: NeedBar[] = [
+      tempBar,
     { id: 'o2', label: 'Кислород (O₂)', score: o2, status: statusOf(o2), note: `${Math.round(aq.water.o2)}% (нужно ${species.o2Min}–${species.o2Max})` },
     { id: 'ph', label: 'pH', score: ph, status: statusOf(ph), note: `${aq.water.ph.toFixed(1)} (нужно ${species.phMin}–${species.phMax})` },
     { id: 'gh', label: 'GH (жёсткость)', score: gh, status: statusOf(gh), note: `${aq.water.gh.toFixed(1)} °dH (нужно ${species.ghMin}–${species.ghMax})` },

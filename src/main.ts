@@ -4,7 +4,7 @@ import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from './data/aqu
 import { EQUIPMENT, SHELVES, STORAGE_TANK_PRICE, rackCapacity, shelfLoadLeft } from './data/shop'
 import { DECOR } from './data/decor'
 import { DAY_DURATION_SECONDS } from './timing'
-import { allAquariums, canStock, recalcWater, usedVolume } from './sim/aquarium'
+import { allAquariums, canStock, recalcWater, tickWater, usedVolume } from './sim/aquarium'
 import { updateHealth, feedFish } from './sim/health'
 import { availableStock, buyPrice, dailyUpkeep, wholesalePrice } from './sim/economy'
 import { arrivalInterval, generateOrder, shopAttractiveness, updateMarket } from './sim/buyers'
@@ -250,13 +250,9 @@ const ui = buildApp({
     pushLog(`Куплено оборудование ${def.name} за ${def.price}₽`, 'buy')
     bump()
   },
-  onInstallEquipment(id, aqId) {
+onInstallEquipment(id, aqId) {
     const aq = aquariumById(aqId)
     if (!aq) return
-    if (aq.equipment.length >= 4) {
-      ui.flash('Нет свободных слотов!')
-      return
-    }
     const idx = state.shop.rackInventory.indexOf(id)
     if (idx < 0) {
       ui.flash('Оборудования нет на полке!')
@@ -312,22 +308,20 @@ const ui = buildApp({
     const aq = aquariumById(aqId)
     if (!aq) return
 
-    // Температура и свет задают целевые значения установленного оборудования,
-    // иначе (без оборудования) пишут прямо в воду. Так настройки сохраняются.
+    // Температуру и свет можно регулировать только при установленном оборудовании
+    // (нагреватель / светильник). Настройка становится целью оборудования.
     if (kind === 'temp' || kind === 'light') {
       if (value === undefined) return
       const eqId = kind === 'temp' ? 'heater' : 'light'
       const inst = aq.equipment.find((e) => e.id === eqId)
-      if (inst) {
-        const param = kind === 'temp' ? 'target' : 'intensity'
-        inst.settings[param] = value
-        recalcWater(aq)
-        pushLog(`Условия «${aq.name}»: ${kind === 'temp' ? 'температура' : 'освещённость'} → ${Math.round(value)}`, 'info')
-      } else {
-        if (kind === 'temp') aq.water.temperature = Math.max(5, Math.min(40, value))
-        else aq.water.light = Math.max(0, Math.min(100, value))
-        pushLog(`Условия «${aq.name}»: ${kind === 'temp' ? 'температура' : 'освещённость'} → ${Math.round(value)} (без оборудования)`, 'info')
+      if (!inst) {
+        ui.flash(kind === 'temp' ? 'Нет нагревателя — температуру регулировать нельзя' : 'Нет светильника — освещённость регулировать нельзя')
+        return
       }
+      const param = kind === 'temp' ? 'target' : 'intensity'
+      inst.settings[param] = kind === 'temp' ? Math.max(15, Math.min(40, value)) : Math.max(0, Math.min(100, value))
+      recalcWater(aq)
+      pushLog(`Условия «${aq.name}»: ${kind === 'temp' ? 'температура' : 'освещённость'} → ${Math.round(value)}`, 'info')
       bump()
       return
     }
@@ -611,7 +605,7 @@ function moveFish(fish: FishInstance, dt: number): void {
 
 function updateAquariums(dt: number): void {
   for (const aq of allAquariums(state)) {
-    recalcWater(aq)
+    tickWater(aq, dt)
     const required = usedVolume(aq, SPECIES_BY_ID)
     const crowded = required > aq.volume
     const dead = new Set<string>()
