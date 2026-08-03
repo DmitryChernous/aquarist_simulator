@@ -595,6 +595,16 @@ body {
   color: #9fb6cd;
 }
 
+.store-reason {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--warn);
+  background: rgba(245, 185, 66, 0.1);
+  border: 1px solid rgba(245, 185, 66, 0.28);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
 .rack-head {
   display: flex;
   align-items: center;

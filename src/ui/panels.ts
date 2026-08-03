@@ -67,6 +67,12 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node
 }
 
+function storeReason(text: string): HTMLElement {
+  const r = el('div', 'store-reason')
+  r.textContent = text
+  return r
+}
+
 function allAquariums(state: GameState): AquariumState[] {
   const out: AquariumState[] = []
   for (const shelf of state.shelves) out.push(...shelf.aquariums)
@@ -1119,9 +1125,11 @@ export function buildApp(actions: UIActions) {
       )
       card.append(priceRow)
       const buyBtn = el('button', 'btn buy', `Купить на склад — ${buyPrice(species, factor)}₽`)
-      buyBtn.disabled = state.money < buyPrice(species, factor)
+      const noMoney = state.money < buyPrice(species, factor)
+      buyBtn.disabled = noMoney
       buyBtn.addEventListener('click', () => actions.onBuyFishToStorage(species.id, storeDest.value))
       card.append(buyBtn)
+      if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${buyPrice(species, factor)}₽`))
       storeGrid.append(card)
     }
 
@@ -1140,9 +1148,11 @@ export function buildApp(actions: UIActions) {
         })(),
       )
       const btn = el('button', 'btn buy', `Купить в склад — ${def.price}₽`)
-      btn.disabled = state.money < def.price
+      const noMoney = state.money < def.price
+      btn.disabled = noMoney
       btn.addEventListener('click', () => actions.onBuyDecor(kind))
       card.append(btn)
+      if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${def.price}₽`))
       decorStore.append(card)
     }
 
@@ -1162,9 +1172,23 @@ export function buildApp(actions: UIActions) {
         })(),
       )
       const btn = el('button', 'btn buy', `Купить в склад — ${def.price}₽`)
-      btn.disabled = state.money < def.price || state.shop.rackInventory.length >= rackCapacity(state.shop)
+      const noMoney = state.money < def.price
+      const rackFull = state.shop.rackInventory.length >= rackCapacity(state.shop)
+      btn.disabled = noMoney || rackFull
       btn.addEventListener('click', () => actions.onBuyEquipment(eid))
       card.append(btn)
+      if (noMoney) {
+        card.append(storeReason(`Не хватает денег: нужно ${def.price}₽`))
+      } else if (rackFull) {
+        const capacity = rackCapacity(state.shop)
+        card.append(
+          storeReason(
+            capacity <= 0
+              ? 'Нет полки комплектующих для хранения. Купите её в «Обустройство» → «Оснащение» (150₽).'
+              : `Полка комплектующих заполнена (${state.shop.rackInventory.length}/${capacity} мест). Купите ещё одну в «Обустройство» → «Оснащение».`,
+          ),
+        )
+      }
       equipStore.append(card)
     }
 
@@ -1184,9 +1208,11 @@ export function buildApp(actions: UIActions) {
         el('div', 'store-desc', `${spec.slabs.length} полки · до ${spec.loadCapacityL} л`),
       )
       const btn = el('button', 'btn buy', `Купить в склад — ${spec.price}₽`)
-      btn.disabled = state.money < spec.price
+      const noMoney = state.money < spec.price
+      btn.disabled = noMoney
       btn.addEventListener('click', () => actions.onBuyShelf(specId))
       card.append(btn)
+      if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${spec.price}₽`))
       furnShelves.append(card)
     }
 
@@ -1198,9 +1224,11 @@ export function buildApp(actions: UIActions) {
     )
     if (!shop.cashRegister) {
       const regBtn = el('button', 'btn buy', 'Купить — 300₽')
-      regBtn.disabled = state.money < 300
+      const noMoney = state.money < 300
+      regBtn.disabled = noMoney
       regBtn.addEventListener('click', () => actions.onBuyShopItem('cashRegister'))
       regCard.append(regBtn)
+      if (noMoney) regCard.append(storeReason('Не хватает денег: нужно 300₽'))
     }
     furnEquip.append(regCard)
 
@@ -1210,9 +1238,11 @@ export function buildApp(actions: UIActions) {
       el('div', 'store-desc', `Хранит оборудование и декор: занято ${shop.rackInventory.length + shop.rackDecor.length} мест`),
     )
     const rackBtn = el('button', 'btn buy', 'Купить — 150₽')
-    rackBtn.disabled = state.money < 150
+    const noMoneyRack = state.money < 150
+    rackBtn.disabled = noMoneyRack
     rackBtn.addEventListener('click', () => actions.onBuyShopItem('componentRack'))
     rackCard.append(rackBtn)
+    if (noMoneyRack) rackCard.append(storeReason('Не хватает денег: нужно 150₽'))
     furnEquip.append(rackCard)
 
     const dcount = furnitureCount(shop, 'displayRack')
@@ -1222,9 +1252,11 @@ export function buildApp(actions: UIActions) {
       el('div', 'store-desc', 'Покупатели заказывают оборудование и декор со склада. Вместимость: ' + displayCapacity(shop) + ' позиций'),
     )
     const displayBtn = el('button', 'btn buy', 'Купить — 700₽')
-    displayBtn.disabled = state.money < 700
+    const noMoneyDisplay = state.money < 700
+    displayBtn.disabled = noMoneyDisplay
     displayBtn.addEventListener('click', () => actions.onBuyFurniture('displayRack'))
     displayCard.append(displayBtn)
+    if (noMoneyDisplay) displayCard.append(storeReason('Не хватает денег: нужно 700₽'))
     furnEquip.append(displayCard)
 
     furnFurn.innerHTML = ''
@@ -1238,9 +1270,11 @@ export function buildApp(actions: UIActions) {
         el('div', 'store-desc', def.desc),
       )
       const btn = el('button', 'btn buy', `Купить — ${def.price}₽`)
-      btn.disabled = state.money < def.price
+      const noMoneyF = state.money < def.price
+      btn.disabled = noMoneyF
       btn.addEventListener('click', () => actions.onBuyFurniture(id))
       card.append(btn)
+      if (noMoneyF) card.append(storeReason(`Не хватает денег: нужно ${def.price}₽`))
       furnFurn.append(card)
     }
   }

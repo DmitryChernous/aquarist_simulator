@@ -189,7 +189,7 @@ export function loadState(): GameState {
           shop: {
             cashRegister: Boolean(old.shop?.cashRegister),
             furniture: migrateFurniture(old.shop),
-            componentRacks: Number(old.shop?.componentRacks ?? 0),
+            componentRacks: Number(old.shop?.componentRacks ?? 1),
             rackInventory: Array.isArray(old.shop?.rackInventory) ? old.shop.rackInventory : [],
             rackDecor: Array.isArray(old.shop?.rackDecor) ? old.shop.rackDecor : [],
             shelvesInventory: [],
