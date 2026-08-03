@@ -1,4 +1,4 @@
-import type { AquariumState, FishSpecies, GameState, TankState } from '../types'
+import type { AquariumState, FishSpecies, GameState, RoomId, ShelfState, TankState } from '../types'
 import { SPECIES_BY_ID } from '../data/fish'
 
 // Комнатная температура: без нагревателя вода стремится к ней.
@@ -10,6 +10,16 @@ export function allAquariums(state: GameState): AquariumState[] {
   const out: AquariumState[] = []
   for (const shelf of state.shelves) out.push(...shelf.aquariums)
   return out
+}
+
+export function aquariumsInRoom(state: GameState, roomId: RoomId): AquariumState[] {
+  const out: AquariumState[] = []
+  for (const shelf of state.shelves) if (shelf.roomId === roomId) out.push(...shelf.aquariums)
+  return out
+}
+
+export function shelfOfAquarium(state: GameState, aq: AquariumState): ShelfState | undefined {
+  return state.shelves.find((s) => s.id === aq.shelfId)
 }
 
 export function allStorage(state: GameState): TankState[] {

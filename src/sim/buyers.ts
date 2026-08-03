@@ -1,7 +1,7 @@
 import type { AquariumState, GameState, Order, TankState } from '../types'
 import { MAX_DESIGN_LEVEL } from '../data/aquarium'
 import { FISH_SPECIES, SPECIES_BY_ID } from '../data/fish'
-import { allAquariums } from './aquarium'
+import { allAquariums, aquariumsInRoom } from './aquarium'
 
 export function tankAttractiveness(aq: AquariumState): number {
   const design = (aq.designLevel / MAX_DESIGN_LEVEL) * 25
@@ -27,15 +27,17 @@ export function tankAttractiveness(aq: AquariumState): number {
 }
 
 export function shopAttractiveness(state: GameState): number {
-  const displays = allAquariums(state)
+  // Покупатели видят только витрины в зале
+  const displays = aquariumsInRoom(state, 'hall')
   if (displays.length === 0) return 0
 
   const avgTank = displays.reduce((acc, a) => acc + tankAttractiveness(a), 0) / displays.length
   const speciesSet = new Set<string>()
   for (const a of displays) for (const f of a.fish) speciesSet.add(f.speciesId)
   const diversity = Math.min(speciesSet.size / 6, 1) * 100
+  const hallShelves = state.shelves.filter((s) => s.roomId === 'hall').length
   const equipment = Math.min(
-    state.shop.restAreas * 8 + state.shop.componentRacks * 3 + state.shelves.length * 2,
+    state.shop.restAreas * 8 + state.shop.componentRacks * 3 + hallShelves * 2,
     25,
   )
 
@@ -63,7 +65,7 @@ export function conversionChance(state: GameState): number {
 export function speciesDisplayScore(state: GameState, speciesId: string): number {
   let sum = 0
   let count = 0
-  for (const a of allAquariums(state)) {
+  for (const a of aquariumsInRoom(state, 'hall')) {
     const tAtt = tankAttractiveness(a)
     for (const f of a.fish) {
       if (f.speciesId !== speciesId) continue
@@ -100,7 +102,7 @@ export function generateOrder(state: GameState): Order | null {
   const inStock = new Set<string>()
   for (const t of allStorage2(state)) for (const item of t.stock) if (item.count > 0) inStock.add(item.speciesId)
   const onDisplay = new Set<string>()
-  for (const a of allAquariums(state)) for (const f of a.fish) onDisplay.add(f.speciesId)
+  for (const a of aquariumsInRoom(state, 'hall')) for (const f of a.fish) onDisplay.add(f.speciesId)
   if (inStock.size === 0 && onDisplay.size === 0) return null
 
   const determined = onDisplay.size === 0 ? true : Math.random() < 0.5

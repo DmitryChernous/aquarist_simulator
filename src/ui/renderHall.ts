@@ -1,6 +1,7 @@
 import type { GameState } from '../types'
 import { SPECIES_BY_ID } from '../data/fish'
 import { shelfUsedLiters } from '../data/shop'
+import { ROOM_BY_ID } from '../data/rooms'
 
 export const HALL_WIDTH = 960
 export const HALL_HEIGHT = 420
@@ -40,13 +41,15 @@ export function layoutHall(state: GameState): { shelves: ShelfRect[] } {
   const shelves: ShelfRect[] = []
   const bodyH = FLOOR_Y - TOP_Y
 
+  const roomShelves = state.shelves.filter((s) => s.roomId === state.viewRoom)
+
   let total = 0
-  for (const shelf of state.shelves) total += Math.max(160, shelf.slabs.length * 66) + GAP
+  for (const shelf of roomShelves) total += Math.max(160, shelf.slabs.length * 66) + GAP
   total -= GAP
   const scale = Math.min(1, (HALL_WIDTH - PAD * 2) / Math.max(1, total))
 
   let cursor = PAD
-  for (const shelf of state.shelves) {
+  for (const shelf of roomShelves) {
     const w = Math.max(160, shelf.slabs.length * 66) * scale
     const slabH = bodyH / Math.max(1, shelf.slabs.length)
 
@@ -134,7 +137,20 @@ export function drawHall(ctx: CanvasRenderingContext2D, state: GameState, select
     ctx.stroke()
   }
 
+  const room = ROOM_BY_ID[state.viewRoom]
+  ctx.fillStyle = '#2e2016'
+  ctx.font = 'bold 15px system-ui'
+  ctx.textAlign = 'left'
+  ctx.fillText(`${room.icon} ${room.name} — ${room.desc}`, PAD, 26)
+
   const { shelves } = layoutHall(state)
+  if (shelves.length === 0) {
+    ctx.fillStyle = 'rgba(46,32,22,0.55)'
+    ctx.font = '14px system-ui'
+    ctx.textAlign = 'center'
+    ctx.fillText('В этом помещении нет стоек. Купите и разместите их ниже.', HALL_WIDTH / 2, HALL_HEIGHT / 2)
+  }
+
   for (const shelf of shelves) {
     ctx.fillStyle = '#4a3424'
     ctx.fillRect(shelf.x, shelf.y, shelf.w, shelf.h)

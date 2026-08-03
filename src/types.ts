@@ -127,7 +127,17 @@ export interface AquariumState {
   designLevel: number
 }
 
-// --- Стеллаж ---
+// --- Помещения ---
+export type RoomId = 'hall' | 'storage' | 'breeding'
+
+export interface RoomDef {
+  id: RoomId
+  name: string
+  icon: string
+  desc: string
+}
+
+// --- Стойка (стеллаж) ---
 export interface ShelfSlab {
   id: string
   width: number
@@ -139,6 +149,7 @@ export interface ShelfSlab {
 export interface ShelfState {
   id: string
   name: string
+  roomId: RoomId
   pos: { x: number; y: number }
   slabs: ShelfSlab[]
   loadCapacityL: number
@@ -186,7 +197,7 @@ export interface ShopState {
   componentRacks: number
   rackInventory: EquipmentId[] // оборудование на полке склада
   rackDecor: DecorKind[] // декорации на складе
-  shelvesInventory: string[] // купленные, но ещё не размещённые стеллажи
+  shelvesInventory: string[] // купленные, но ещё не размещённые стойки
 }
 
 export type OrderKind = 'demand' | 'display'
@@ -217,6 +228,7 @@ export interface GameState {
   orders: Order[]
   selectedAquariumId: string | null
   selectedStorageId: string | null
+  viewRoom: RoomId
   day: number
   daySeconds: number
   log: LogEntry[]

@@ -1,20 +1,23 @@
 import { FISH_SPECIES, SPECIES_BY_ID } from '../data/fish'
 import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from '../data/aquarium'
-import { EQUIPMENT, EQUIPMENT_IDS, SHELVES, rackCapacity, shelfLoadLeft, shelfUsedLiters } from '../data/shop'
+import { EQUIPMENT, EQUIPMENT_IDS, SHELVES, fitsOnSlab, rackCapacity, shelfLoadLeft, shelfUsedLiters } from '../data/shop'
 import { DECOR, DECOR_KINDS } from '../data/decor'
+import { ROOMS, ROOM_BY_ID } from '../data/rooms'
 import { tankAttractiveness } from '../sim/buyers'
 import { availableStock, buyPrice, retailPrice, stockTotal, wholesalePrice } from '../sim/economy'
-import { canStock, vegetationOf, ROOM_TEMP } from '../sim/aquarium'
+import { canStock, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
 import { fishWellbeing } from '../sim/wellbeing'
 import { VERSION } from '../version'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
-import type { AquariumState, DecorKind, EquipmentId, GameState, ShelfState } from '../types'
+import type { AquariumState, DecorKind, EquipmentId, GameState, RoomId, ShelfState } from '../types'
 import type { WellBeingReport } from '../sim/wellbeing'
 
 export interface UIActions {
   onBuyShelf(specId: string): void
-  onPlaceShelf(specId: string): void
-  onUnstoreShelf(shelfId: string): void
+  onPlaceShelf(specId: string, roomId: RoomId): void
+  onMoveShelf(shelfId: string, roomId: RoomId): void
+  onMoveAquarium(aqId: string, targetShelfId: string, targetSlabId: string): void
+  onViewRoom(roomId: RoomId): void
   onSellShelf(shelfId: string): void
   onSellInventoryShelf(specId: string): void
   onAddStorage(): void
@@ -178,6 +181,7 @@ export function buildApp(actions: UIActions) {
   const shelfStore = app.querySelector<HTMLDivElement>('.shelf-store')!
   const hallList = app.querySelector<HTMLDivElement>('.hall-list')!
   const hallActions = app.querySelector<HTMLDivElement>('.hall-actions')!
+  const roomSwitch = app.querySelector<HTMLDivElement>('.room-switch')!
   const ordersPanel = app.querySelector<HTMLDivElement>('.orders-panel')!
 
   const storageSelect = app.querySelector<HTMLSelectElement>('#storageSelect')!
@@ -257,33 +261,46 @@ export function buildApp(actions: UIActions) {
   }
 
   function renderZal(state: GameState): void {
+    roomSwitch.innerHTML = ''
+    for (const r of ROOMS) {
+      const b = el('button', r.id === state.viewRoom ? 'room-btn active' : 'room-btn', `${r.icon} ${r.name}`)
+      b.addEventListener('click', () => actions.onViewRoom(r.id))
+      roomSwitch.append(b)
+    }
+
     hallActions.innerHTML = ''
-    const buyShelf = el('button', 'btn', 'Добавить стеллаж')
+    const buyShelf = el('button', 'btn', 'Добавить стойку')
     buyShelf.addEventListener('click', () => openAddShelfModal(state))
     hallActions.append(buyShelf)
-    const placeShelf = el('button', 'btn', 'Разместить стеллаж')
+    const placeShelf = el('button', 'btn', 'Разместить стойку')
     placeShelf.disabled = state.shop.shelvesInventory.length === 0
-    placeShelf.title = state.shop.shelvesInventory.length > 0 ? `На складе: ${state.shop.shelvesInventory.length}` : 'На складе нет стеллажей'
+    placeShelf.title = state.shop.shelvesInventory.length > 0 ? `На складе: ${state.shop.shelvesInventory.length}` : 'На складе нет стоек'
     placeShelf.addEventListener('click', () => openPlaceShelfModal(state))
     hallActions.append(placeShelf)
 
+    const roomShelves = state.shelves.filter((s) => s.roomId === state.viewRoom)
     hallList.innerHTML = ''
-    if (state.shelves.length === 0) {
+    if (roomShelves.length === 0) {
       const empty = el('div', 'empty hall-empty')
-      const go = el('button', 'btn small', 'Купить стеллаж')
+      const go = el('button', 'btn small', 'Купить стойку')
       go.addEventListener('click', () => openAddShelfModal(state))
-      empty.append(el('span', '', 'Зал пуст. Купите стеллаж, затем разместите его и добавьте аквариум на полку.'), go)
+      empty.append(
+        el('span', '', `В помещении «${ROOM_BY_ID[state.viewRoom].name}» нет стоек. Купите стойку, затем разместите её и добавьте аквариум на полку.`),
+        go,
+      )
       hallList.append(empty)
     }
-    for (const shelf of state.shelves) {
+    for (const shelf of roomShelves) {
       if (shelf.aquariums.length === 0) {
         const empty = el('div', 'comp-hint', `«${shelf.name}» пуст. Добавьте аквариум на полку ниже.`)
         hallList.append(empty)
       }
       const card = el('div', 'shelf-card')
       const head = el('div', 'shelf-head')
+      const roomBadge = el('span', 'room-badge', `${ROOM_BY_ID[shelf.roomId].icon} ${ROOM_BY_ID[shelf.roomId].name}`)
       head.append(
         el('strong', '', shelf.name),
+        roomBadge,
         el('span', 'shelf-meta', `занято ${shelf.aquariums.length}/${shelf.slabs.length} · загрузка ${shelfUsedLiters(shelf)}/${shelf.loadCapacityL} л`),
       )
       const menuBtn = el('button', 'btn small', 'Действия')
@@ -306,7 +323,13 @@ export function buildApp(actions: UIActions) {
             actions.onSelectAquarium(aq.id)
             switchTab(app, 'aquarium')
           })
-          cell.append(tile)
+          const move = el('button', 'btn small', '↔')
+          move.title = 'Переместить на другую стойку'
+          move.addEventListener('click', (e) => {
+            e.stopPropagation()
+            openAquariumMoveModal(state, aq.id)
+          })
+          cell.append(tile, move)
         } else {
           const add = el('button', 'btn small', 'Добавить аквариум')
           add.addEventListener('click', () => openAddAquariumModal(state, shelf, slab.id))
@@ -341,7 +364,7 @@ export function buildApp(actions: UIActions) {
     }
 
     shelfStore.innerHTML = ''
-    shelfStore.append(el('div', 'comp-hint', 'Стеллажи (стоимость от числа полок и грузоподъёмности):'))
+    shelfStore.append(el('div', 'comp-hint', 'Стойки (стоимость от числа полок и грузоподъёмности):'))
     for (const specId of Object.keys(SHELVES)) {
       const spec = SHELVES[specId as keyof typeof SHELVES]
       const card = el('div', 'shop-card')
@@ -358,8 +381,8 @@ export function buildApp(actions: UIActions) {
   }
 
   function openAddShelfModal(s: GameState): void {
-    const { body } = overlay('Купить стеллаж (на склад)')
-    body.append(el('div', 'comp-hint', 'Купленный стеллаж появляется на складе. Затем разместите его в зале через «Разместить стеллаж».'))
+    const { body } = overlay('Купить стойку (на склад)')
+    body.append(el('div', 'comp-hint', 'Купленная стойка появляется на складе. Затем разместите её в помещении через «Разместить стойку».'))
     for (const specId of Object.keys(SHELVES)) {
       const spec = SHELVES[specId as keyof typeof SHELVES]
       const row = el('div', 'modal-row')
@@ -376,19 +399,33 @@ export function buildApp(actions: UIActions) {
   }
 
   function openPlaceShelfModal(s: GameState): void {
-    const { body } = overlay('Разместить стеллаж в зале')
+    const { body } = overlay('Разместить стойку в помещении')
     if (s.shop.shelvesInventory.length === 0) {
-      body.append(el('div', 'empty', 'На складе нет стеллажей.'))
+      body.append(el('div', 'empty', 'На складе нет стоек.'))
       return
     }
     const count = new Map<string, number>()
     for (const id of s.shop.shelvesInventory) count.set(id, (count.get(id) ?? 0) + 1)
-    body.append(el('div', 'comp-hint', 'На складе: ' + s.shop.shelvesInventory.length + ' стеллаж(ей). Выберите, что разместить.'))
+    body.append(el('div', 'comp-hint', 'На складе: ' + s.shop.shelvesInventory.length + ' стойка(и). Выберите помещение и что разместить.'))
+
+    const roomSel = el('select')
+    roomSel.className = 'room-select'
+    for (const r of ROOMS) {
+      const o = el('option')
+      o.value = r.id
+      o.textContent = `${r.icon} ${r.name}`
+      roomSel.append(o)
+    }
+    roomSel.value = s.viewRoom
+    const roomRow = el('div', 'modal-row')
+    roomRow.append(el('strong', '', 'Помещение'), roomSel)
+    body.append(roomRow)
+
     for (const [specId, n] of count) {
       const spec = SHELVES[specId as keyof typeof SHELVES]
       const row = el('div', 'modal-row')
       const btn = el('button', 'btn small', 'Разместить')
-      btn.addEventListener('click', () => actions.onPlaceShelf(specId))
+      btn.addEventListener('click', () => actions.onPlaceShelf(specId, roomSel.value as RoomId))
       row.append(
         el('strong', '', `${spec.name} ×${n}`),
         el('span', 'shop-desc', `${spec.slabs.length} полки · до ${spec.loadCapacityL} л`),
@@ -396,26 +433,26 @@ export function buildApp(actions: UIActions) {
       )
       body.append(row)
     }
-    body.append(el('div', 'comp-hint', 'Нужно избавиться от лишнего? Стеллажи со склада можно продать.'))
+    body.append(el('div', 'comp-hint', 'Нужно избавиться от лишнего? Стойки со склада можно продать.'))
   }
 
   function openShelfMenu(shelfId: string, s: GameState): void {
     const shelf = s.shelves.find((sh) => sh.id === shelfId)
     if (!shelf) return
     const spec = SHELVES[shelf.specId as keyof typeof SHELVES]
-    const { body } = overlay(`Стеллаж «${shelf.name}»`)
-    body.append(el('div', 'comp-hint', `${shelf.aquariums.length}/${shelf.slabs.length} полок занято · ${shelfUsedLiters(shelf)}/${shelf.loadCapacityL} л`))
+    const { body } = overlay(`Стойка «${shelf.name}»`)
+    body.append(
+      el('div', 'comp-hint', `Помещение: ${ROOM_BY_ID[shelf.roomId].icon} ${ROOM_BY_ID[shelf.roomId].name} · занято ${shelf.aquariums.length}/${shelf.slabs.length} полок · ${shelfUsedLiters(shelf)}/${shelf.loadCapacityL} л`),
+    )
 
-    const unstore = el('button', 'btn', 'Убрать на склад')
-    unstore.disabled = shelf.aquariums.length > 0
-    if (shelf.aquariums.length > 0) unstore.title = 'Сначала уберите аквариумы с полок'
-    unstore.addEventListener('click', () => actions.onUnstoreShelf(shelf.id))
-    body.append(unstore)
+    const move = el('button', 'btn', 'Переместить в другое помещение…')
+    move.addEventListener('click', () => openShelfMoveModal(shelf))
+    body.append(move)
 
     const specPrice = spec ? spec.price : 0
     const sell = el('button', 'btn danger', `Продать — ${Math.floor(specPrice * 0.5)}₽`)
     sell.addEventListener('click', () => {
-      if (window.confirm(`Продать стеллаж «${shelf.name}»? Аквариумы (${shelf.aquariums.length}) будут удалены.`)) {
+      if (window.confirm(`Продать стойку «${shelf.name}»? Аквариумы (${shelf.aquariums.length}) будут удалены.`)) {
         actions.onSellShelf(shelf.id)
       }
     })
@@ -423,16 +460,73 @@ export function buildApp(actions: UIActions) {
 
     if (shelf.aquariums.length > 0) {
       const aqList = el('div', 'comp-list')
-      aqList.append(el('div', 'list-title', 'На стеллаже:'))
+      aqList.append(el('div', 'list-title', 'На стойке:'))
       for (const aq of shelf.aquariums) {
-        aqList.append(el('div', 'comp-row', aq.name))
+        const row = el('div', 'comp-row')
+        row.append(el('span', 'comp-name', aq.name))
+        const btn = el('button', 'btn small', 'Переместить')
+        btn.addEventListener('click', () => openAquariumMoveModal(s, aq.id))
+        row.append(btn)
+        aqList.append(row)
       }
       body.append(aqList)
     }
   }
 
+  function openShelfMoveModal(shelf: ShelfState): void {
+    const { body } = overlay(`Переместить стойку «${shelf.name}»`)
+    body.append(el('div', 'comp-hint', `Сейчас: ${ROOM_BY_ID[shelf.roomId].icon} ${ROOM_BY_ID[shelf.roomId].name}. Выберите помещение:`))
+    for (const r of ROOMS) {
+      const row = el('div', 'modal-row')
+      const btn = el('button', 'btn small', 'Переместить')
+      btn.disabled = r.id === shelf.roomId
+      btn.addEventListener('click', () => actions.onMoveShelf(shelf.id, r.id))
+      row.append(
+        el('strong', '', `${r.icon} ${r.name}`),
+        el('span', 'shop-desc', r.desc),
+        btn,
+      )
+      body.append(row)
+    }
+  }
+
+  function openAquariumMoveModal(s: GameState, aqId: string): void {
+    const aq = allAquariums(s).find((a) => a.id === aqId)
+    if (!aq) return
+    const src = s.shelves.find((sh) => sh.id === aq.shelfId)
+    const { body } = overlay(`Переместить «${aq.name}»`)
+    body.append(
+      el('div', 'comp-hint', `Сейчас: ${src ? ROOM_BY_ID[src.roomId].icon + ' ' + ROOM_BY_ID[src.roomId].name + ' · ' + src.name : '—'}. Выберите свободную полку:`),
+    )
+    const targets: { shelf: ShelfState; slab: import('../types').ShelfSlab }[] = []
+    for (const shelf of s.shelves) {
+      for (const slab of shelf.slabs) {
+        if (shelf.id === src?.id && slab.id === aq.slabId) continue
+        if (shelf.aquariums.some((a) => a.slabId === slab.id)) continue
+        if (!fitsOnSlab(aq, slab)) continue
+        if (aq.volume > shelfLoadLeft(shelf)) continue
+        targets.push({ shelf, slab })
+      }
+    }
+    if (targets.length === 0) {
+      body.append(el('div', 'empty', 'Нет свободных подходящих полок. Купите новую стойку или освободите полку.'))
+      return
+    }
+    for (const t of targets) {
+      const row = el('div', 'modal-row')
+      const btn = el('button', 'btn small', 'Перенести')
+      btn.addEventListener('click', () => actions.onMoveAquarium(aq.id, t.shelf.id, t.slab.id))
+      row.append(
+        el('strong', '', `${ROOM_BY_ID[t.shelf.roomId].name} · ${t.shelf.name}`),
+        el('span', 'shop-desc', `${t.slab.width}×${t.slab.depth}×${t.slab.height} см`),
+        btn,
+      )
+      body.append(row)
+    }
+  }
+
   function openAddAquariumModal(s: GameState, shelf: ShelfState, slabId: string): void {
-    const { body } = overlay('Добавить аквариум: на полку стеллажа «' + shelf.name + '»')
+    const { body } = overlay('Добавить аквариум: на полку стойки «' + shelf.name + '»')
     const slab = shelf.slabs.find((sl) => sl.id === slabId)
     body.append(el('div', 'comp-hint', `Остаток грузоподъёмности: ${shelfLoadLeft(shelf)} л`))
     for (const model of AQUARIUM_MODELS) {
@@ -490,8 +584,14 @@ export function buildApp(actions: UIActions) {
     }
     aquariumAtt.textContent = `Привлекательность: ${tankAttractiveness(aq)}/100`
 
+    const aqShelf = shelfOfAquarium(state, aq)
+    const aqRoom = aqShelf ? ROOM_BY_ID[aqShelf.roomId] : null
+
     aqInfo.innerHTML = ''
     aqInfo.append(el('div', 'aq-keys', aq.name))
+    if (aqRoom && aqShelf) {
+      aqInfo.append(el('div', 'aq-line loc-line', `${aqRoom.icon} Помещение: ${aqRoom.name} · Стойка: «${aqShelf.name}»`))
+    }
     aqInfo.append(el('div', 'aq-line', `Объём ${aq.volume} л (${aq.w}×${aq.d}×${aq.h} см)`))
     const w = aq.water
     const hasThermo = aq.equipment.some((e) => e.id === 'thermometer')
@@ -536,6 +636,7 @@ export function buildApp(actions: UIActions) {
     mkBtn('Декор', () => openDecorModal(state, aq.id))
     mkBtn('Обитатели', () => openInhabitantsModal(state, aq.id))
     mkBtn('Обслуживание', () => openMaintenanceModal(state, aq.id))
+    mkBtn('Переместить', () => openAquariumMoveModal(state, aq.id))
   }
 
   function openEquipmentModal(s: GameState, aqId: string): void {
@@ -813,16 +914,28 @@ export function buildApp(actions: UIActions) {
     shelfInventory.innerHTML = ''
     const inv = state.shop.shelvesInventory
     if (inv.length === 0) {
-      shelfInventory.append(el('div', 'empty', 'Пусто. Добавьте стеллаж на экране «Зал».'))
+      shelfInventory.append(el('div', 'empty', 'Пусто. Добавьте стойку на экране «Помещения».'))
     } else {
       const bySpec = new Map<string, number>()
       for (const id of inv) bySpec.set(id, (bySpec.get(id) ?? 0) + 1)
+      const roomRow = el('div', 'comp-row')
+      const roomSel = el('select')
+      roomSel.className = 'room-select'
+      for (const r of ROOMS) {
+        const o = el('option')
+        o.value = r.id
+        o.textContent = `${r.icon} ${r.name}`
+        roomSel.append(o)
+      }
+      roomSel.value = state.viewRoom
+      roomRow.append(el('span', 'comp-name', 'Разместить в помещении:'), roomSel)
+      shelfInventory.append(roomRow)
       for (const [specId, n] of bySpec) {
         const spec = SHELVES[specId as keyof typeof SHELVES]
         const row = el('div', 'comp-row')
         row.append(el('span', 'comp-name', `${spec?.name ?? specId} ×${n}`))
-        const place = el('button', 'btn small', 'Разместить в зале')
-        place.addEventListener('click', () => actions.onPlaceShelf(specId))
+        const place = el('button', 'btn small', 'Разместить')
+        place.addEventListener('click', () => actions.onPlaceShelf(specId, roomSel.value as RoomId))
         const sell = el('button', 'btn small danger', 'Продать')
         sell.addEventListener('click', () => actions.onSellInventoryShelf(specId))
         row.append(place, sell)
@@ -957,7 +1070,7 @@ export function buildApp(actions: UIActions) {
     const all = allAquariums(s)
     const { body } = overlay(kind === 'equip' ? 'Установить оборудование' : 'Разместить декор')
     if (all.length === 0) {
-      body.append(el('div', 'empty', 'Нет аквариумов. Добавьте аквариум на стеллаж.'))
+      body.append(el('div', 'empty', 'Нет аквариумов. Добавьте аквариум на стойку.'))
       return
     }
     body.append(el('div', 'comp-hint', kind === 'equip' ? 'Выберите аквариум для установки:' : 'Выберите аквариум для декора:'))
@@ -1131,13 +1244,12 @@ function buildLayout(): HTMLElement {
 
   const nav = el('nav', 'tabs')
   nav.append(
-    tabButton('zal', 'Зал', true),
+    tabButton('zal', 'Помещения', true),
     tabButton('aquarium', 'Аквариум', false),
     tabButton('storage', 'Склад', false),
     tabButton('store', 'Магазин', false),
     tabButton('orders', 'Заказы', false),
     tabButton('furni', 'Обустройство', false),
-    el('button', 'tab-btn disabled', 'Разводня'),
     el('button', 'tab-btn disabled', 'Опт'),
     el('button', 'tab-btn disabled', 'Сервис'),
   )
@@ -1147,9 +1259,10 @@ function buildLayout(): HTMLElement {
   const zalTab = el('section', 'tab active')
   zalTab.id = 'tab-zal'
   zalTab.append(
-    el('h2', 'sec-title', 'Выставочный зал'),
+    el('h2', 'sec-title', 'Помещения'),
+    el('div', 'room-switch'),
     buildHallCanvas(),
-    el('h2', 'sec-title', 'Управление стеллажами'),
+    el('h2', 'sec-title', 'Управление стойками'),
     el('div', 'hall-actions'),
     el('div', 'hall-list'),
   )
@@ -1166,7 +1279,7 @@ function buildLayout(): HTMLElement {
   furnTab.append(
     el('h2', 'sec-title', 'Обустройство магазина'),
     el('div', 'shop-equipment'),
-    el('h2', 'sec-title', 'Купить стеллаж'),
+    el('h2', 'sec-title', 'Купить стойку'),
     el('div', 'shelf-store'),
   )
 
@@ -1206,7 +1319,7 @@ function buildLayout(): HTMLElement {
     el('h2', 'sec-title', 'Склады'),
     el('div', 'tank-cards storage-cards'),
     addStorageButton(),
-    el('h2', 'sec-title', 'Стеллажи на складе'),
+    el('h2', 'sec-title', 'Стойки на складе'),
     el('div', 'shelf-inventory'),
     el('h2', 'sec-title', 'Рыбы «на продажу»'),
     el('div', 'stock-list'),

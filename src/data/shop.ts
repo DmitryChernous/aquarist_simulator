@@ -63,7 +63,7 @@ export const STORAGE_TANK_PRICE = 150
 
 export const SHELVES: Record<string, import('../types').ShelfSpec> = {
   compact: {
-    name: 'Компактный стеллаж',
+    name: 'Компактная стойка',
     price: 500,
     loadCapacityL: 300,
     slabs: [
@@ -72,7 +72,7 @@ export const SHELVES: Record<string, import('../types').ShelfSpec> = {
     ],
   },
   double: {
-    name: 'Двойной стеллаж',
+    name: 'Двойная стойка',
     price: 900,
     loadCapacityL: 600,
     slabs: [
@@ -81,7 +81,7 @@ export const SHELVES: Record<string, import('../types').ShelfSpec> = {
     ],
   },
   premium: {
-    name: 'Премиум-стеллаж',
+    name: 'Премиум-стойка',
     price: 1600,
     loadCapacityL: 1200,
     slabs: [

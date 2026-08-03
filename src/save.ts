@@ -1,4 +1,4 @@
-import type { AquariumState, GameState, TankState } from './types'
+import type { AquariumState, GameState, RoomId, TankState } from './types'
 import { FISH_SPECIES } from './data/fish'
 import { AQUARIUM_MODELS } from './data/aquarium'
 import { EQUIPMENT } from './data/shop'
@@ -55,18 +55,19 @@ export function defaultState(): GameState {
       rackDecor: [],
       shelvesInventory: [],
     },
-    shelves: [{ id: 'sh1', name: 'Стеллаж 1', pos: { x: 0, y: 0 }, slabs, loadCapacityL: 300, specId: 'compact', aquariums: [aq] }],
+    shelves: [{ id: 'sh1', name: 'Стойка 1', roomId: 'hall', pos: { x: 0, y: 0 }, slabs, loadCapacityL: 300, specId: 'compact', aquariums: [aq] }],
     storage: [{ id: 's1', name: 'Склад 1', kind: 'storage', stock: [] }],
     market: Object.fromEntries(FISH_SPECIES.map((s) => [s.id, 1])),
     orders: [],
     selectedAquariumId: 'a1',
     selectedStorageId: 's1',
+    viewRoom: 'hall',
     day: 1,
     daySeconds: 0,
     log: [
       {
         day: 1,
-        text: 'Добро пожаловать! Откройте «Зал» — расставляйте стеллажи и аквариумы. Закупите рыб во «Магазине» на склад, заселите их в аквариум. Настройте воду и оборудование (аэрация, свет).',
+        text: 'Добро пожаловать! Откройте «Помещения» — расставляйте стойки и аквариумы по комнатам (зал, склад, разводня). Закупите рыб во «Магазине» на склад, заселите их в аквариум. Настройте воду и оборудование (аэрация, свет).',
         kind: 'info',
       },
     ],
@@ -145,10 +146,12 @@ export function loadState(): GameState {
         ...(s as any),
         id: s.id ?? `sh-restored-${i}`,
         specId: (s as any).specId ?? 'compact',
+        roomId: ((s as any).roomId ?? 'hall') as RoomId,
       }))
       return {
         ...base,
         ...parsed,
+        viewRoom: ((parsed as any).viewRoom ?? 'hall') as RoomId,
         shop: {
           ...base.shop,
           ...(parsed.shop ?? {}),
@@ -179,7 +182,8 @@ export function loadState(): GameState {
           shelves: [
             {
               id: 'sh1',
-              name: 'Стеллаж 1',
+              name: 'Стойка 1',
+              roomId: 'hall',
               pos: { x: 0, y: 0 },
               slabs: [
                 { id: 'slab0', width: 600, depth: 45, height: 55, slot: 0 },
@@ -193,6 +197,7 @@ export function loadState(): GameState {
           storage,
           selectedAquariumId: aquariums[0]?.id ?? null,
           selectedStorageId: storage[0]?.id ?? null,
+          viewRoom: 'hall',
           day: Number.isFinite(Number(old.day)) && Number(old.day) > 0 ? Number(old.day) : 1,
           orders: Array.isArray(old.orders) ? old.orders : [],
           nextVisitorIn: Number.isFinite(Number(old.nextVisitorIn)) ? Number(old.nextVisitorIn) : 25,
