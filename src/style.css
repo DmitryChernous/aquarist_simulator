@@ -639,6 +639,50 @@ body {
   gap: 8px;
 }
 
+.storage-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.storage-count {
+  font-size: 13px;
+}
+.storage-bar {
+  height: 10px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.storage-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+.storage-objects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.storage-object {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.storage-object:hover {
+  border-color: var(--accent);
+}
+.shelf-head.clickable {
+  cursor: pointer;
+}
+
 .store-card {
   background: var(--panel);
   border: 1px solid var(--border);

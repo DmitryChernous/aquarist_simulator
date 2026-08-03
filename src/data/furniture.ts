@@ -33,7 +33,7 @@ export const FURNITURE: Record<FurnitureId, FurnitureDef> = {
     id: 'displayRack',
     name: 'Стеллаж-витрина',
     price: 700,
-    desc: 'Покупатели заказывают оборудование и декор со склада (4 позиции за витрину)',
+    desc: 'Покупатели заказывают оборудование и декор со склада (8 позиций за витрину)',
     displaySlots: EQUIPMENT_SLOTS_PER_RACK,
     attractBonus: 2,
     upkeep: 5,

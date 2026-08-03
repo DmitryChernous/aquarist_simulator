@@ -58,7 +58,7 @@ export const EQUIPMENT: Record<EquipmentId, EquipmentDef> = {
 export const EQUIPMENT_IDS = Object.keys(EQUIPMENT) as EquipmentId[]
 
 export const EQUIPMENT_SLOTS_PER_TANK = 4
-export const EQUIPMENT_SLOTS_PER_RACK = 4
+export const EQUIPMENT_SLOTS_PER_RACK = 8
 export const STORAGE_TANK_PRICE = 150
 
 export const SHELVES: Record<string, import('../types').ShelfSpec> = {
@@ -94,8 +94,13 @@ export const SHELVES: Record<string, import('../types').ShelfSpec> = {
 export const SHELF_SPECS = Object.values(SHELVES)
 export type ShelfSpecId = keyof typeof SHELVES
 
-export function rackCapacity(shop: ShopState): number {
-  return shop.componentRacks * EQUIPMENT_SLOTS_PER_RACK
+export function storageCapacity(shop: ShopState): number {
+  const displayRacks = shop.furniture?.displayRack ?? 0
+  return (shop.componentRacks + displayRacks) * EQUIPMENT_SLOTS_PER_RACK
+}
+
+export function storageUsed(shop: ShopState): number {
+  return shop.rackInventory.length + shop.rackDecor.length
 }
 
 export function shelfUsedLiters(shelf: import('../types').ShelfState): number {

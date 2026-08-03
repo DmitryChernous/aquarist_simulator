@@ -2,7 +2,7 @@ import './style.css'
 import { VERSION } from './version'
 import { SPECIES_BY_ID } from './data/fish'
 import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from './data/aquarium'
-import { EQUIPMENT, SHELVES, STORAGE_TANK_PRICE, fitsOnSlab, rackCapacity, shelfLoadLeft } from './data/shop'
+import { EQUIPMENT, SHELVES, STORAGE_TANK_PRICE, fitsOnSlab, shelfLoadLeft, storageCapacity, storageUsed } from './data/shop'
 import { DECOR } from './data/decor'
 import { FURNITURE } from './data/furniture'
 import { ROOM_BY_ID } from './data/rooms'
@@ -319,8 +319,8 @@ const ui = buildApp({
       ui.flash('Не хватает денег!')
       return
     }
-    if (state.shop.rackInventory.length >= rackCapacity(state.shop)) {
-      ui.flash('Полка для комплектующих заполнена!')
+    if (storageUsed(state.shop) >= storageCapacity(state.shop)) {
+      ui.flash('Место на складе закончилось! Купите полку или стеллаж в «Магазине».')
       return
     }
     state.money -= def.price
@@ -469,6 +469,10 @@ onInstallEquipment(id, aqId) {
     const def = DECOR[kind]
     if (state.money < def.price) {
       ui.flash('Не хватает денег!')
+      return
+    }
+    if (storageUsed(state.shop) >= storageCapacity(state.shop)) {
+      ui.flash('Место на складе закончилось! Купите полку или стеллаж в «Магазине».')
       return
     }
     state.money -= def.price

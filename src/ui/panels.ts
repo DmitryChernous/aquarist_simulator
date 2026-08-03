@@ -1,6 +1,6 @@
 import { FISH_SPECIES, SPECIES_BY_ID } from '../data/fish'
 import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from '../data/aquarium'
-import { EQUIPMENT, EQUIPMENT_IDS, SHELVES, fitsOnSlab, rackCapacity, shelfLoadLeft, shelfUsedLiters } from '../data/shop'
+import { EQUIPMENT, EQUIPMENT_IDS, EQUIPMENT_SLOTS_PER_RACK, SHELVES, fitsOnSlab, shelfLoadLeft, shelfUsedLiters, storageCapacity, storageUsed } from '../data/shop'
 import { DECOR, DECOR_KINDS } from '../data/decor'
 import { ROOMS, ROOM_BY_ID } from '../data/rooms'
 import { FURNITURE, FURNITURE_IDS, displayCapacity, furnitureCount } from '../data/furniture'
@@ -10,7 +10,7 @@ import { canStock, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquar
 import { fishWellbeing } from '../sim/wellbeing'
 import { VERSION } from '../version'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
-import type { AquariumState, DecorKind, EquipmentId, FurnitureId, GameState, RoomId, ShelfState } from '../types'
+import type { AquariumState, DecorKind, EquipmentId, FurnitureId, GameState, RoomId, ShelfState, ShopState } from '../types'
 import type { WellBeingReport } from '../sim/wellbeing'
 
 export interface UIActions {
@@ -71,6 +71,19 @@ function storeReason(text: string): HTMLElement {
   const r = el('div', 'store-reason')
   r.textContent = text
   return r
+}
+
+function storageObjectCard(title: string, sub: string, onClick: () => void): HTMLElement {
+  const card = el('button', 'btn storage-object')
+  card.append(el('strong', '', title), el('span', 'shop-desc', sub), el('span', 'comp-hint', 'Нажмите, чтобы открыть содержимое'))
+  card.addEventListener('click', onClick)
+  return card
+}
+
+function storageFullReason(shop: ShopState): string {
+  const cap = storageCapacity(shop)
+  if (cap <= 0) return 'Нет места для хранения. Купите полку комплектующих или стеллаж в «Обустройство» → «Оснащение».'
+  return `Место на складе закончилось (${storageUsed(shop)}/${cap}). Купите полку комплектующих или стеллаж в «Обустройство» → «Оснащение».`
 }
 
 function allAquariums(state: GameState): AquariumState[] {
@@ -333,7 +346,12 @@ export function buildApp(actions: UIActions) {
         el('span', 'shelf-meta', `занято ${shelf.aquariums.length}/${shelf.slabs.length} · загрузка ${shelfUsedLiters(shelf)}/${shelf.loadCapacityL} л`),
       )
       const menuBtn = el('button', 'btn small', 'Действия')
-      menuBtn.addEventListener('click', () => openShelfMenu(shelf.id, state))
+      menuBtn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        openShelfMenu(shelf.id, state)
+      })
+      head.classList.add('clickable')
+      head.addEventListener('click', () => openShelfMenu(shelf.id, state))
       head.append(menuBtn)
       card.append(head)
       const body = el('div', 'shelf-body')
@@ -979,64 +997,51 @@ export function buildApp(actions: UIActions) {
     }
 
     rackPanel.innerHTML = ''
-    const renderRackPanel = () => {
-      rackPanel.innerHTML = ''
-      const capacity = rackCapacity(state.shop)
-      const headerRow = el('div', 'rack-head')
-      headerRow.append(el('div', 'comp-hint', `Полка для комплектующих: занято ${state.shop.rackInventory.length} из ${capacity} мест`))
-      const goShop = el('button', 'btn small', 'Открыть магазин')
-      goShop.addEventListener('click', () => {
-        setStoreMode('sale')
-        setStoreSection('equip')
-        switchTab(app, 'store')
-      })
-      headerRow.append(goShop)
-      rackPanel.append(headerRow)
+    const cap = storageCapacity(state.shop)
+    const used = storageUsed(state.shop)
+    const summary = el('div', 'storage-summary')
+    summary.append(el('span', 'storage-count', `Занято: ${used} из ${cap} мест · свободно ${Math.max(0, cap - used)}`))
+    const bar = el('div', 'storage-bar')
+    const fill = el('div', 'storage-bar-fill')
+    fill.style.width = `${cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0}%`
+    bar.append(fill)
+    summary.append(bar)
+    rackPanel.append(summary)
 
-      const controlRow = el('div', 'rack-tools')
-      const catSel = el('select')
-      catSel.className = 'rack-filter'
-      const CATS: { value: string; label: string }[] = [
-        { value: 'all', label: 'Всё оборудование' },
-        { value: 'decor', label: 'Только декор' },
-        ...EQUIPMENT_IDS.map((id) => ({ value: id, label: EQUIPMENT[id].name })),
-      ]
-      fillSelect(catSel, CATS, rackFilter)
-      catSel.addEventListener('change', () => {
-        rackFilter = catSel.value
-        renderRackPanel()
-      })
-      const sortSel = el('select')
-      sortSel.className = 'rack-sort'
-      const SORTS: { value: string; label: string }[] = [
-        { value: 'name', label: 'Сорт: по имени' },
-        { value: 'price', label: 'Сорт: по цене ↑' },
-        { value: 'priceDesc', label: 'Сорт: по цене ↓' },
-        { value: 'count', label: 'Сорт: по количеству' },
-      ]
-      fillSelect(sortSel, SORTS, rackSort)
-      sortSel.addEventListener('change', () => {
-        rackSort = sortSel.value
-        renderRackPanel()
-      })
-      controlRow.append(catSel, sortSel)
-      rackPanel.append(controlRow)
-      rackPanel.append(renderRackList(state))
+    const goShop = el('button', 'btn small', 'Купить полку или стеллаж')
+    goShop.addEventListener('click', () => {
+      setStoreMode('furn')
+      setStoreSection('equip')
+      switchTab(app, 'store')
+    })
+    rackPanel.append(goShop)
+
+    const objects = el('div', 'storage-objects')
+    const racks = state.shop.componentRacks
+    const displays = furnitureCount(state.shop, 'displayRack')
+    if (racks > 0) {
+      objects.append(storageObjectCard(`Полка комплектующих ×${racks}`, `вместимость ${racks * EQUIPMENT_SLOTS_PER_RACK} мест`, () => openStorageModal(state)))
     }
-    renderRackPanel()
+    if (displays > 0) {
+      objects.append(storageObjectCard(`Стеллаж-витрина ×${displays}`, `вместимость ${displays * EQUIPMENT_SLOTS_PER_RACK} мест`, () => openStorageModal(state)))
+    }
+    if (racks === 0 && displays === 0) {
+      objects.append(el('div', 'empty', 'Места для хранения нет. Купите полку комплектующих или стеллаж в «Обустройство» → «Оснащение».'))
+    }
+    rackPanel.append(objects)
   }
 
   let rackFilter = 'all'
   let rackSort = 'name'
 
-  function renderRackList(state: GameState): HTMLElement {
+  function renderRackList(state: GameState, onChanged?: () => void): HTMLElement {
     const list = el('div', 'rack-list')
     type Row = { label: string; price: number; count: number; kind: 'equip' | 'decor'; id: string }
     const rows: Row[] = []
     const eqCount = new Map<EquipmentId, number>()
     for (const eid of state.shop.rackInventory) eqCount.set(eid, (eqCount.get(eid) ?? 0) + 1)
     for (const [eid, count] of eqCount) {
-      if (rackFilter !== 'all' && rackFilter !== 'decor' && rackFilter !== eid) continue
+      if (rackFilter !== 'all' && rackFilter !== 'equip' && rackFilter !== eid) continue
       const def = EQUIPMENT[eid]
       rows.push({ label: def.name, price: def.price, count, kind: 'equip', id: eid })
     }
@@ -1064,18 +1069,19 @@ export function buildApp(actions: UIActions) {
       sell.addEventListener('click', () => {
         if (row.kind === 'equip') actions.onSellRackEquipment(row.id as EquipmentId)
         else actions.onSellRackDecor(row.id as DecorKind)
+        onChanged?.()
       })
       const install = el('button', 'btn small', row.kind === 'equip' ? 'Установить' : 'Разместить')
-      install.addEventListener('click', () => openRackInstallModal(state, row.kind, row.id as EquipmentId, row.id as DecorKind))
+      install.addEventListener('click', () => openRackInstallModal(state, row.kind, row.id as EquipmentId, row.id as DecorKind, onChanged))
       item.append(sell, install)
       list.append(item)
     }
     return list
   }
 
-  function openRackInstallModal(s: GameState, kind: 'equip' | 'decor', eid: EquipmentId, dkind: DecorKind): void {
+  function openRackInstallModal(s: GameState, kind: 'equip' | 'decor', eid: EquipmentId, dkind: DecorKind, onChanged?: () => void): void {
     const all = allAquariums(s)
-    const { body } = overlay(kind === 'equip' ? 'Установить оборудование' : 'Разместить декор')
+    const { body, close } = overlay(kind === 'equip' ? 'Установить оборудование' : 'Разместить декор')
     if (all.length === 0) {
       body.append(el('div', 'empty', 'Нет аквариумов. Добавьте аквариум на стойку.'))
       return
@@ -1083,15 +1089,75 @@ export function buildApp(actions: UIActions) {
     body.append(el('div', 'comp-hint', kind === 'equip' ? 'Выберите аквариум для установки:' : 'Выберите аквариум для декора:'))
     for (const aq of all) {
       const row = el('div', 'modal-row')
+      const sh = shelfOfAquarium(s, aq)
+      const loc = sh ? `${ROOM_BY_ID[sh.roomId].icon} ${ROOM_BY_ID[sh.roomId].name}` : ''
       const name = el('strong', '', `${aq.name} (${aq.volume} л)`)
       const btn = el('button', 'btn small', kind === 'equip' ? 'Установить' : 'Разместить')
       btn.addEventListener('click', () => {
         if (kind === 'equip') actions.onInstallEquipment(eid, aq.id)
         else actions.onPlaceDecorFromRack(dkind, aq.id)
+        close()
+        onChanged?.()
       })
-      row.append(name, el('span', 'comp-hint', kind === 'equip' ? 'без ограничений по слоту' : ''), btn)
+      row.append(name, el('span', 'comp-hint', [loc, kind === 'equip' ? 'без ограничений по слоту' : ''].filter(Boolean).join(' · ')), btn)
       body.append(row)
     }
+  }
+
+  function openStorageModal(state: GameState): void {
+    const { body, close } = overlay('Хранение на складе')
+    const hint = el('div', 'comp-hint')
+    body.append(hint)
+
+    const controlRow = el('div', 'rack-tools')
+    const catSel = el('select')
+    catSel.className = 'rack-filter'
+    const CATS: { value: string; label: string }[] = [
+      { value: 'all', label: 'Всё (оборудование и декор)' },
+      { value: 'equip', label: 'Оборудование' },
+      { value: 'decor', label: 'Декор' },
+      ...EQUIPMENT_IDS.map((id) => ({ value: id, label: EQUIPMENT[id].name })),
+    ]
+    fillSelect(catSel, CATS, rackFilter)
+    const sortSel = el('select')
+    sortSel.className = 'rack-sort'
+    const SORTS: { value: string; label: string }[] = [
+      { value: 'name', label: 'Сорт: по имени' },
+      { value: 'price', label: 'Сорт: по цене ↑' },
+      { value: 'priceDesc', label: 'Сорт: по цене ↓' },
+      { value: 'count', label: 'Сорт: по количеству' },
+    ]
+    fillSelect(sortSel, SORTS, rackSort)
+    controlRow.append(catSel, sortSel)
+    body.append(controlRow)
+
+    const listWrap = el('div')
+    body.append(listWrap)
+    const render = (): void => {
+      const used = storageUsed(state.shop)
+      const cap = storageCapacity(state.shop)
+      hint.textContent = `Занято ${used} из ${cap} мест · свободно ${Math.max(0, cap - used)}. Оборудование и декор доступны с любой полки или стеллажа.`
+      listWrap.innerHTML = ''
+      listWrap.append(renderRackList(state, render))
+    }
+    catSel.addEventListener('change', () => {
+      rackFilter = catSel.value
+      render()
+    })
+    sortSel.addEventListener('change', () => {
+      rackSort = sortSel.value
+      render()
+    })
+    render()
+
+    const goShop = el('button', 'btn small', 'Купить в магазине')
+    goShop.addEventListener('click', () => {
+      close()
+      setStoreMode('sale')
+      setStoreSection('equip')
+      switchTab(app, 'store')
+    })
+    body.append(goShop)
   }
 
   function renderStore(state: GameState): void {
@@ -1149,10 +1215,12 @@ export function buildApp(actions: UIActions) {
       )
       const btn = el('button', 'btn buy', `Купить в склад — ${def.price}₽`)
       const noMoney = state.money < def.price
-      btn.disabled = noMoney
+      const storageFull = storageUsed(state.shop) >= storageCapacity(state.shop)
+      btn.disabled = noMoney || storageFull
       btn.addEventListener('click', () => actions.onBuyDecor(kind))
       card.append(btn)
       if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${def.price}₽`))
+      else if (storageFull) card.append(storeReason(storageFullReason(state.shop)))
       decorStore.append(card)
     }
 
@@ -1173,22 +1241,12 @@ export function buildApp(actions: UIActions) {
       )
       const btn = el('button', 'btn buy', `Купить в склад — ${def.price}₽`)
       const noMoney = state.money < def.price
-      const rackFull = state.shop.rackInventory.length >= rackCapacity(state.shop)
-      btn.disabled = noMoney || rackFull
+      const storageFull = storageUsed(state.shop) >= storageCapacity(state.shop)
+      btn.disabled = noMoney || storageFull
       btn.addEventListener('click', () => actions.onBuyEquipment(eid))
       card.append(btn)
-      if (noMoney) {
-        card.append(storeReason(`Не хватает денег: нужно ${def.price}₽`))
-      } else if (rackFull) {
-        const capacity = rackCapacity(state.shop)
-        card.append(
-          storeReason(
-            capacity <= 0
-              ? 'Нет полки комплектующих для хранения. Купите её в «Обустройство» → «Оснащение» (150₽).'
-              : `Полка комплектующих заполнена (${state.shop.rackInventory.length}/${capacity} мест). Купите ещё одну в «Обустройство» → «Оснащение».`,
-          ),
-        )
-      }
+      if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${def.price}₽`))
+      else if (storageFull) card.append(storeReason(storageFullReason(state.shop)))
       equipStore.append(card)
     }
 
@@ -1235,7 +1293,7 @@ export function buildApp(actions: UIActions) {
     const rackCard = el('div', 'store-card')
     rackCard.append(
       el('strong', 'store-name', `Полка комплектующих ×${shop.componentRacks}`),
-      el('div', 'store-desc', `Хранит оборудование и декор: занято ${shop.rackInventory.length + shop.rackDecor.length} мест`),
+      el('div', 'store-desc', `Хранит оборудование и декор: занято ${storageUsed(shop)} из ${storageCapacity(shop)} мест`),
     )
     const rackBtn = el('button', 'btn buy', 'Купить — 150₽')
     const noMoneyRack = state.money < 150
@@ -1399,7 +1457,7 @@ function buildLayout(): HTMLElement {
     el('div', 'shelf-inventory'),
     el('h2', 'sec-title', 'Рыбы «на продажу»'),
     el('div', 'stock-list'),
-    el('h2', 'sec-title', 'Полка для комплектующих'),
+    el('h2', 'sec-title', 'Место хранения на складе'),
     el('div', 'rack-panel'),
   )
   zalTab.append(storageBlock)
