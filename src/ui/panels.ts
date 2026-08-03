@@ -4,6 +4,7 @@ import { EQUIPMENT, EQUIPMENT_IDS, EQUIPMENT_SLOTS_PER_RACK, SHELVES, fitsOnSlab
 import { DECOR, DECOR_KINDS } from '../data/decor'
 import { ROOMS, ROOM_BY_ID } from '../data/rooms'
 import { FURNITURE, FURNITURE_IDS, displayCapacity, furnitureCount } from '../data/furniture'
+import { HALL_HEIGHT, HALL_WIDTH } from './renderHall'
 import { tankAttractiveness } from '../sim/buyers'
 import { availableStock, buyPrice, decorStock, equipmentStock, retailPrice, stockTotal, wholesalePrice } from '../sim/economy'
 import { canStock, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
@@ -159,8 +160,8 @@ function slider(
 function buildHallCanvas(): HTMLCanvasElement {
   const c = el('canvas')
   c.id = 'hall'
-  c.width = 960
-  c.height = 420
+  c.width = HALL_WIDTH
+  c.height = HALL_HEIGHT
   c.className = 'hall-canvas'
   return c
 }
@@ -1104,6 +1105,23 @@ export function buildApp(actions: UIActions) {
     }
   }
 
+  function openFurnitureModal(state: GameState, id: FurnitureId): void {
+    const def = FURNITURE[id]
+    const { body } = overlay(def.name)
+    const count = state.shop.furniture[id] ?? 0
+    body.append(el('div', 'shop-desc', def.desc))
+    body.append(el('div', 'comp-hint', `Куплено: ${count}`))
+    if (def.attractBonus) body.append(el('div', 'comp-hint', `+${def.attractBonus} к привлекательности зала`))
+    if (def.conversionBonus) body.append(el('div', 'comp-hint', `+${Math.round(def.conversionBonus * 100)}% к конверсии покупателей`))
+    if (def.displaySlots) body.append(el('div', 'comp-hint', `Позиций для заказов: ${count * def.displaySlots}`))
+    if (def.upkeep) body.append(el('div', 'comp-hint', `Содержание: ${def.upkeep * count}₽/день`))
+    if (id === 'displayRack') {
+      const btn = el('button', 'btn small', 'Открыть содержимое витрины')
+      btn.addEventListener('click', () => openStorageModal(state))
+      body.append(btn)
+    }
+  }
+
   function openStorageModal(state: GameState): void {
     const { body, close } = overlay('Хранение на складе')
     const hint = el('div', 'comp-hint')
@@ -1346,7 +1364,7 @@ export function buildApp(actions: UIActions) {
     }
   }
 
-  return { update, flash, selectTab: (tab: TabName) => switchTab(app, tab), openShelfMenu: (id: string) => openShelfMenu(id, latestState), openStorageModal: () => openStorageModal(latestState) }
+  return { update, flash, selectTab: (tab: TabName) => switchTab(app, tab), openShelfMenu: (id: string) => openShelfMenu(id, latestState), openStorageModal: () => openStorageModal(latestState), openFurnitureModal: (id: FurnitureId) => openFurnitureModal(latestState, id) }
 }
 
 function switchTab(app: HTMLElement, tab: TabName): void {

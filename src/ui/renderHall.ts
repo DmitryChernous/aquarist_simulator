@@ -1,10 +1,11 @@
-import type { GameState } from '../types'
+import type { FurnitureId, GameState } from '../types'
 import { SPECIES_BY_ID } from '../data/fish'
 import { shelfUsedLiters, storageCapacity, storageUsed } from '../data/shop'
 import { ROOM_BY_ID } from '../data/rooms'
+import { FURNITURE, FURNITURE_IDS } from '../data/furniture'
 
 export const HALL_WIDTH = 960
-export const HALL_HEIGHT = 420
+export const HALL_HEIGHT = 500
 
 export interface TankRect {
   shelfId: string
@@ -16,9 +17,21 @@ export interface TankRect {
   h: number
 }
 
+export interface Box {
+  x: number
+  y: number
+  w: number
+  h: number
+  dSx: number
+  dSy: number
+  wz: number
+  wx: number
+}
+
 export interface ShelfRect {
   shelfId: string
   name: string
+  box: Box
   x: number
   y: number
   w: number
@@ -29,11 +42,38 @@ export interface ShelfRect {
 export interface StorageObjectRect {
   id: 'componentRacks' | 'displayRack'
   label: string
+  box: Box
   x: number
   y: number
   w: number
   h: number
 }
+
+export interface FurnitureRect {
+  id: FurnitureId
+  box: Box
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+// --- Проекция «три четверти» (cabinet): глубина уходит вправо-вверх ---
+const PAD = 20
+const ROOM_W = 18
+const DEPTH_SLANT = 24
+const DEPTH_LIFT = 20
+const FLOOR_DEPTH = 8
+const FRONT_Y = HALL_HEIGHT - 24
+const CELL_W = (HALL_WIDTH - PAD * 2 - FLOOR_DEPTH * DEPTH_SLANT) / ROOM_W
+const SHELF_H = 230
+const FURN_FOOTPRINT: Record<FurnitureId, { cells: number; h: number }> = {
+  coffeeTable: { cells: 2, h: 50 },
+  armchair: { cells: 2, h: 95 },
+  sofa: { cells: 3, h: 85 },
+  displayRack: { cells: 2, h: 190 },
+}
+const FURN_ROWS = [3, 5]
 
 function hash(s: string): number {
   let h = 0
@@ -41,74 +81,144 @@ function hash(s: string): number {
   return h
 }
 
-const PAD = 20
-const GAP = 30
-const FLOOR_Y = HALL_HEIGHT - 44
-const TOP_Y = 76
-const STORAGE_BAND_H = 96
-
-function storageBandVisible(state: GameState): boolean {
-  return state.viewRoom === 'storage' && (state.shop.componentRacks > 0 || (state.shop.furniture?.displayRack ?? 0) > 0)
+function sx(wx: number, wz: number): number {
+  return PAD + wx * CELL_W + wz * DEPTH_SLANT
 }
 
-export function layoutStorageObjects(state: GameState): StorageObjectRect[] {
-  const out: StorageObjectRect[] = []
-  if (!storageBandVisible(state)) return out
-  const y = FLOOR_Y - STORAGE_BAND_H + 24
-  const h = STORAGE_BAND_H - 24
-  let cursor = PAD
-  const mk = (id: StorageObjectRect['id'], label: string): void => {
-    const w = 220
-    out.push({ id, label, x: cursor, y, w, h })
-    cursor += w + GAP
+function sy(wz: number): number {
+  return FRONT_Y - (FLOOR_DEPTH - wz) * DEPTH_LIFT
+}
+
+function makeBox(wx0: number, wz0: number, wx1: number, wz1: number, h: number): Box {
+  return {
+    x: sx(wx0, wz1),
+    y: sy(wz1),
+    w: (wx1 - wx0) * CELL_W,
+    h,
+    dSx: (wz0 - wz1) * DEPTH_SLANT,
+    dSy: (wz0 - wz1) * DEPTH_LIFT,
+    wz: wz1,
+    wx: wx0,
   }
-  if (state.shop.componentRacks > 0) mk('componentRacks', `Полка комплектующих ×${state.shop.componentRacks}`)
-  const displays = state.shop.furniture?.displayRack ?? 0
-  if (displays > 0) mk('displayRack', `Стеллаж-витрина ×${displays}`)
-  return out
+}
+
+function drawBox(ctx: CanvasRenderingContext2D, b: Box, colors: { front: string; side: string; top: string; edge: string }): void {
+  const { x, y, w, h, dSx, dSy } = b
+
+  ctx.fillStyle = colors.side
+  ctx.beginPath()
+  ctx.moveTo(x + w, y)
+  ctx.lineTo(x + w, y - h)
+  ctx.lineTo(x + w + dSx, y - h + dSy)
+  ctx.lineTo(x + w + dSx, y + dSy)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.fillStyle = colors.front
+  ctx.fillRect(x, y - h, w, h)
+
+  ctx.fillStyle = colors.top
+  ctx.beginPath()
+  ctx.moveTo(x, y - h)
+  ctx.lineTo(x + w, y - h)
+  ctx.lineTo(x + w + dSx, y - h + dSy)
+  ctx.lineTo(x + dSx, y - h + dSy)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.strokeStyle = colors.edge
+  ctx.lineWidth = 2
+  ctx.strokeRect(x, y - h, w, h)
+  ctx.beginPath()
+  ctx.moveTo(x + w, y)
+  ctx.lineTo(x + w + dSx, y + dSy)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(x + w, y - h)
+  ctx.lineTo(x + w + dSx, y - h + dSy)
+  ctx.stroke()
 }
 
 export function layoutHall(state: GameState): { shelves: ShelfRect[] } {
   const shelves: ShelfRect[] = []
-  const bottom = FLOOR_Y - (storageBandVisible(state) ? STORAGE_BAND_H : 0)
-  const bodyH = bottom - TOP_Y
-
   const roomShelves = state.shelves.filter((s) => s.roomId === state.viewRoom)
+  const cells = roomShelves.map((s) => 2 + s.slabs.length)
+  const total = cells.reduce((a, b) => a + b, 0) + Math.max(0, cells.length - 1)
+  let cursor = Math.max(0, (ROOM_W - total) / 2)
 
-  let total = 0
-  for (const shelf of roomShelves) total += Math.max(160, shelf.slabs.length * 66) + GAP
-  total -= GAP
-  const scale = Math.min(1, (HALL_WIDTH - PAD * 2) / Math.max(1, total))
-
-  let cursor = PAD
-  for (const shelf of roomShelves) {
-    const w = Math.max(160, shelf.slabs.length * 66) * scale
-    const slabH = bodyH / Math.max(1, shelf.slabs.length)
+  for (let i = 0; i < roomShelves.length; i++) {
+    const shelf = roomShelves[i]
+    const c = cells[i]
+    const b = makeBox(cursor, 0, cursor + c, 1, SHELF_H)
 
     const tanks: TankRect[] = []
-    let cy = bottom
+    const slabH = b.h / Math.max(1, shelf.slabs.length)
+    let cy = b.y
     for (const slab of shelf.slabs) {
       const aq = shelf.aquariums.find((a) => a.slabId === slab.id)
-if (aq) {
+      if (aq) {
         const aqH = Math.max(26, slabH - 16)
         tanks.push({
           shelfId: shelf.id,
           slabId: slab.id,
           aqId: aq.id,
-          x: cursor + 10,
+          x: b.x + 8,
           y: cy - aqH - 4,
-          w: w - 20,
+          w: b.w - 16,
           h: aqH,
         })
       }
       cy -= slabH
     }
 
-    shelves.push({ shelfId: shelf.id, name: shelf.name, x: cursor, y: TOP_Y, w, h: bodyH, tanks })
-    cursor += w + GAP
+    shelves.push({ shelfId: shelf.id, name: shelf.name, box: b, x: b.x, y: b.y - b.h, w: b.w, h: b.h, tanks })
+    cursor += c + 1
   }
 
   return { shelves }
+}
+
+export function layoutFurniture(state: GameState): FurnitureRect[] {
+  if (state.viewRoom !== 'hall') return []
+  const items: FurnitureId[] = []
+  for (const id of FURNITURE_IDS) {
+    const n = state.shop.furniture[id] ?? 0
+    for (let i = 0; i < n; i++) items.push(id)
+  }
+
+  const out: FurnitureRect[] = []
+  let row = 0
+  let cursor = 1
+  for (const id of items) {
+    while (row < FURN_ROWS.length) {
+      const fp = FURN_FOOTPRINT[id]
+      if (cursor + fp.cells <= ROOM_W - 1) break
+      row++
+      cursor = 1
+    }
+    if (row >= FURN_ROWS.length) break
+    const wz = FURN_ROWS[row]
+    const fp = FURN_FOOTPRINT[id]
+    const b = makeBox(cursor, wz, cursor + fp.cells, wz + 1, fp.h)
+    out.push({ id, box: b, x: b.x, y: b.y - b.h, w: b.w, h: b.h })
+    cursor += fp.cells + 1
+  }
+  return out
+}
+
+export function layoutStorageObjects(state: GameState): StorageObjectRect[] {
+  const out: StorageObjectRect[] = []
+  if (state.viewRoom !== 'storage') return []
+  let cursor = 2
+  const add = (id: StorageObjectRect['id'], label: string): void => {
+    const b = makeBox(cursor, 6, cursor + 3, 7, 90)
+    out.push({ id, label, box: b, x: b.x, y: b.y - b.h, w: b.w, h: b.h })
+    cursor += 4
+  }
+  if (state.shop.componentRacks > 0) add('componentRacks', `Полка комплектующих ×${state.shop.componentRacks}`)
+  const displays = state.shop.furniture?.displayRack ?? 0
+  if (displays > 0) add('displayRack', `Стеллаж-витрина ×${displays}`)
+  return out
 }
 
 function drawTank(ctx: CanvasRenderingContext2D, aq: any, r: { x: number; y: number; w: number; h: number }, selected: boolean, time: number): void {
@@ -151,21 +261,189 @@ function drawTank(ctx: CanvasRenderingContext2D, aq: any, r: { x: number; y: num
   ctx.fillText(`${aq.fish.length}р · ${aq.volume}л`, r.x + r.w / 2, r.y + 12)
 }
 
+function drawShelf(ctx: CanvasRenderingContext2D, state: GameState, s: ShelfRect, selectedId: string | null, time: number): void {
+  const b = s.box
+  drawBox(ctx, b, { front: '#4a3424', side: '#38281a', top: '#5d4330', edge: '#2e2016' })
+
+  ctx.fillStyle = '#5d4330'
+  ctx.fillRect(b.x + 5, b.y - b.h + 5, b.w - 10, b.h - 10)
+  ctx.strokeStyle = '#2e2016'
+  ctx.lineWidth = 2
+  ctx.strokeRect(b.x + 5, b.y - b.h + 5, b.w - 10, b.h - 10)
+
+  const shelfState = state.shelves.find((x) => x.id === s.shelfId)
+  if (shelfState) {
+    const used = shelfUsedLiters(shelfState)
+    const max = shelfState.loadCapacityL
+    const ratio = max ? used / max : 0
+    const topY = b.y - b.h
+    ctx.fillStyle = ratio < 0.75 ? '#4caf50' : ratio < 1 ? '#ff9800' : '#e53935'
+    ctx.fillRect(b.x, topY - 6, b.w, 4)
+    ctx.fillStyle = '#1f1a10'
+    ctx.font = '11px system-ui'
+    ctx.textAlign = 'left'
+    ctx.fillText(`${used}${max ? `/${max}` : ''}л · ${s.name}`, b.x, topY - 9)
+  }
+
+  for (const t of s.tanks) {
+    const aq = state.shelves.find((x) => x.id === t.shelfId)?.aquariums.find((a) => a.id === t.aqId)
+    if (aq) drawTank(ctx, aq, t, selectedId === aq.id, time)
+  }
+}
+
+function drawChair(ctx: CanvasRenderingContext2D, b: Box, wide: boolean): void {
+  drawBox(ctx, b, { front: '#2f5d7a', side: '#23485f', top: '#3b6f8f', edge: '#1b3a4f' })
+  const sep = b.h * 0.55
+  ctx.fillStyle = '#23485f'
+  ctx.fillRect(b.x, b.y - b.h, b.w, sep)
+  const armW = Math.min(11, b.w * 0.16)
+  const armH = b.h - 30
+  ctx.fillStyle = '#3b6f8f'
+  ctx.fillRect(b.x, b.y - b.h + 12, armW, armH)
+  ctx.fillRect(b.x + b.w - armW, b.y - b.h + 12, armW, armH)
+  if (wide) {
+    ctx.strokeStyle = 'rgba(20,40,60,0.5)'
+    ctx.lineWidth = 1
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath()
+      ctx.moveTo(b.x + b.w * 0.2 + i * b.w * 0.25, b.y - b.h)
+      ctx.lineTo(b.x + b.w * 0.2 + i * b.w * 0.25, b.y - sep)
+      ctx.stroke()
+    }
+  }
+}
+
+function drawFurniture(ctx: CanvasRenderingContext2D, state: GameState, f: FurnitureRect): void {
+  const b = f.box
+  const def = FURNITURE[f.id]
+
+  if (f.id === 'coffeeTable') {
+    ctx.strokeStyle = '#6b4a2b'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(b.x + 7, b.y)
+    ctx.lineTo(b.x + 7, b.y + 12)
+    ctx.moveTo(b.x + b.w - 7, b.y)
+    ctx.lineTo(b.x + b.w - 7, b.y + 12)
+    ctx.stroke()
+    drawBox(ctx, { ...b, h: 18 }, { front: '#c8a878', side: '#9c7a4e', top: '#d9bd92', edge: '#6b4a2b' })
+    ctx.fillStyle = 'rgba(190,225,255,0.45)'
+    ctx.beginPath()
+    ctx.moveTo(b.x, b.y - 18)
+    ctx.lineTo(b.x + b.w, b.y - 18)
+    ctx.lineTo(b.x + b.w + b.dSx, b.y - 18 + b.dSy)
+    ctx.lineTo(b.x + b.dSx, b.y - 18 + b.dSy)
+    ctx.closePath()
+    ctx.fill()
+  } else if (f.id === 'armchair') {
+    drawChair(ctx, b, false)
+  } else if (f.id === 'sofa') {
+    drawChair(ctx, b, true)
+  } else {
+    drawBox(ctx, b, { front: '#5b4127', side: '#3f2c19', top: '#7c6145', edge: '#2e2016' })
+    const n = 4
+    ctx.strokeStyle = '#2e2016'
+    ctx.lineWidth = 1
+    for (let i = 1; i < n; i++) {
+      const yy = b.y - (b.h / n) * i
+      ctx.beginPath()
+      ctx.moveTo(b.x, yy)
+      ctx.lineTo(b.x + b.w, yy)
+      ctx.moveTo(b.x + b.w, yy)
+      ctx.lineTo(b.x + b.w + b.dSx, yy + b.dSy)
+      ctx.stroke()
+    }
+    const eqCount = state.shop.rackInventory.length
+    const decCount = state.shop.rackDecor.length
+    let idx = 0
+    for (let i = 0; i < n - 1 && idx < 8; i++) {
+      for (let j = 0; j < 2 && idx < 8; j++) {
+        const xx = b.x + 8 + j * 22
+        const yy = b.y - (b.h / n) * (i + 1) + 6
+        ctx.fillStyle = idx < eqCount ? '#ffd54f' : idx < eqCount + decCount ? '#81c784' : 'rgba(255,255,255,0.15)'
+        ctx.fillRect(xx, yy - 7, 15, 8)
+        idx++
+      }
+    }
+  }
+
+  ctx.fillStyle = 'rgba(46,32,22,0.85)'
+  ctx.font = '11px system-ui'
+  ctx.textAlign = 'center'
+  ctx.fillText(def.name, b.x + b.w / 2, b.y - b.h - 9)
+}
+
+function drawStorageObject(ctx: CanvasRenderingContext2D, state: GameState, o: StorageObjectRect): void {
+  const b = o.box
+  drawBox(ctx, b, { front: '#5b4127', side: '#3f2c19', top: '#7c6145', edge: '#2e2016' })
+  const used = storageUsed(state.shop)
+  const cap = storageCapacity(state.shop)
+  ctx.fillStyle = '#f3e9d2'
+  ctx.font = 'bold 12px system-ui'
+  ctx.textAlign = 'left'
+  ctx.fillText(o.label, b.x + 8, b.y - 18)
+  ctx.font = '11px system-ui'
+  ctx.fillStyle = 'rgba(243,233,210,0.85)'
+  ctx.fillText(`занято ${used}/${cap}`, b.x + 8, b.y - 4)
+  ctx.fillStyle = 'rgba(243,233,210,0.6)'
+  ctx.fillText('нажмите, чтобы открыть', b.x + 8, b.y - 38)
+}
+
 export function drawHall(ctx: CanvasRenderingContext2D, state: GameState, selectedId: string | null, time: number): void {
-  const wall = ctx.createLinearGradient(0, 0, 0, HALL_HEIGHT)
+  const floorBackY = sy(0)
+  const floorFrontY = sy(FLOOR_DEPTH)
+  const floorL = sx(0, 0)
+  const floorR = sx(ROOM_W, 0)
+  const floorFL = sx(0, FLOOR_DEPTH)
+  const floorFR = sx(ROOM_W, FLOOR_DEPTH)
+
+  const wall = ctx.createLinearGradient(0, 0, 0, floorFrontY)
   wall.addColorStop(0, '#efe9dc')
   wall.addColorStop(1, '#d9d0bd')
   ctx.fillStyle = wall
-  ctx.fillRect(0, 0, HALL_WIDTH, HALL_HEIGHT - 44)
+  ctx.fillRect(0, 0, HALL_WIDTH, floorFrontY)
+
+  ctx.fillStyle = '#cfc5ae'
+  ctx.beginPath()
+  ctx.moveTo(floorR, 0)
+  ctx.lineTo(HALL_WIDTH, 0)
+  ctx.lineTo(HALL_WIDTH, floorFrontY)
+  ctx.lineTo(floorFR, floorFrontY)
+  ctx.lineTo(floorR, floorBackY)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.fillStyle = '#d4c9b2'
+  ctx.beginPath()
+  ctx.moveTo(0, 0)
+  ctx.lineTo(floorL, 0)
+  ctx.lineTo(floorL, floorBackY)
+  ctx.lineTo(floorFL, floorFrontY)
+  ctx.lineTo(0, floorFrontY)
+  ctx.closePath()
+  ctx.fill()
 
   ctx.fillStyle = '#b7a687'
-  ctx.fillRect(0, HALL_HEIGHT - 44, HALL_WIDTH, 44)
-  ctx.strokeStyle = 'rgba(90,80,60,0.4)'
+  ctx.beginPath()
+  ctx.moveTo(floorL, floorBackY)
+  ctx.lineTo(floorR, floorBackY)
+  ctx.lineTo(floorFR, floorFrontY)
+  ctx.lineTo(floorFL, floorFrontY)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.strokeStyle = 'rgba(90,80,60,0.3)'
   ctx.lineWidth = 1
-  for (let i = 0; i < HALL_WIDTH; i += 26) {
+  for (let i = 0; i <= ROOM_W; i++) {
     ctx.beginPath()
-    ctx.moveTo(i + 2, HALL_HEIGHT - 44)
-    ctx.lineTo(i + 2, HALL_HEIGHT)
+    ctx.moveTo(sx(i, 0), floorBackY)
+    ctx.lineTo(sx(i, FLOOR_DEPTH), floorFrontY)
+    ctx.stroke()
+  }
+  for (let z = 0; z <= FLOOR_DEPTH; z++) {
+    ctx.beginPath()
+    ctx.moveTo(floorL + z * DEPTH_SLANT, sy(z))
+    ctx.lineTo(floorR + z * DEPTH_SLANT, sy(z))
     ctx.stroke()
   }
 
@@ -176,73 +454,21 @@ export function drawHall(ctx: CanvasRenderingContext2D, state: GameState, select
   ctx.fillText(`${room.icon} ${room.name} — ${room.desc}`, PAD, 26)
 
   const { shelves } = layoutHall(state)
-  const band = layoutStorageObjects(state)
+  const furniture = layoutFurniture(state)
+  const storage = layoutStorageObjects(state)
 
-  if (band.length > 0) {
-    ctx.fillStyle = '#7c6145'
-    ctx.fillRect(PAD, FLOOR_Y - STORAGE_BAND_H, HALL_WIDTH - PAD * 2, STORAGE_BAND_H)
-    ctx.strokeStyle = 'rgba(46,32,22,0.45)'
-    ctx.lineWidth = 2
-    ctx.strokeRect(PAD, FLOOR_Y - STORAGE_BAND_H, HALL_WIDTH - PAD * 2, STORAGE_BAND_H)
-    for (let i = PAD; i < HALL_WIDTH - PAD; i += 22) {
-      ctx.beginPath()
-      ctx.moveTo(i, FLOOR_Y - STORAGE_BAND_H)
-      ctx.lineTo(i, FLOOR_Y)
-      ctx.stroke()
-    }
-    ctx.fillStyle = '#f3e9d2'
-    ctx.font = 'bold 12px system-ui'
-    ctx.fillText('Место хранения', PAD + 4, FLOOR_Y - STORAGE_BAND_H + 16)
+  type DrawItem = { wz: number; wx: number; draw: () => void }
+  const items: DrawItem[] = []
+  for (const s of shelves) items.push({ wz: s.box.wz, wx: s.box.wx, draw: () => drawShelf(ctx, state, s, selectedId, time) })
+  for (const f of furniture) items.push({ wz: f.box.wz, wx: f.box.wx, draw: () => drawFurniture(ctx, state, f) })
+  for (const o of storage) items.push({ wz: o.box.wz, wx: o.box.wx, draw: () => drawStorageObject(ctx, state, o) })
+  items.sort((a, b) => a.wz - b.wz || a.wx - b.wx)
+  for (const it of items) it.draw()
 
-    const used = storageUsed(state.shop)
-    const cap = storageCapacity(state.shop)
-    for (const obj of band) {
-      ctx.fillStyle = '#5b4127'
-      ctx.fillRect(obj.x, obj.y, obj.w, obj.h)
-      ctx.strokeStyle = '#2e2016'
-      ctx.lineWidth = 2
-      ctx.strokeRect(obj.x, obj.y, obj.w, obj.h)
-      ctx.fillStyle = '#f3e9d2'
-      ctx.font = 'bold 13px system-ui'
-      ctx.textAlign = 'left'
-      ctx.fillText(obj.label, obj.x + 10, obj.y + 24)
-      ctx.font = '12px system-ui'
-      ctx.fillStyle = 'rgba(243,233,210,0.9)'
-      ctx.fillText(`занято ${used}/${cap} мест`, obj.x + 10, obj.y + 44)
-      ctx.fillStyle = 'rgba(243,233,210,0.65)'
-      ctx.fillText('нажмите, чтобы открыть', obj.x + 10, obj.y + obj.h - 10)
-    }
-  }
-
-  if (shelves.length === 0 && band.length === 0) {
+  if (shelves.length === 0 && furniture.length === 0 && storage.length === 0) {
     ctx.fillStyle = 'rgba(46,32,22,0.55)'
     ctx.font = '14px system-ui'
     ctx.textAlign = 'center'
-    ctx.fillText('В этом помещении нет стоек. Купите и разместите их ниже.', HALL_WIDTH / 2, HALL_HEIGHT / 2)
-  }
-
-  for (const shelf of shelves) {
-    ctx.fillStyle = '#4a3424'
-    ctx.fillRect(shelf.x, shelf.y, shelf.w, shelf.h)
-    ctx.fillStyle = '#5d4330'
-    ctx.fillRect(shelf.x + 5, shelf.y + 5, shelf.w - 10, shelf.h - 10)
-    ctx.strokeStyle = '#2e2016'
-    ctx.lineWidth = 2
-    ctx.strokeRect(shelf.x + 5, shelf.y + 5, shelf.w - 10, shelf.h - 10)
-
-    const used = shelfUsedLiters(state.shelves.find((s) => s.id === shelf.shelfId)!)
-    const max = state.shelves.find((s) => s.id === shelf.shelfId)?.loadCapacityL ?? 0
-    const ratio = max ? used / max : 0
-    ctx.fillStyle = ratio < 0.75 ? '#4caf50' : ratio < 1 ? '#ff9800' : '#e53935'
-    ctx.fillRect(shelf.x, shelf.y - 7, shelf.w, 4)
-    ctx.fillStyle = '#1f1a10'
-    ctx.font = '11px system-ui'
-    ctx.textAlign = 'left'
-    ctx.fillText(`${used}${max ? `/${max}` : ''}л`, shelf.x, shelf.y - 10)
-
-    for (const tank of shelf.tanks) {
-      const aq = state.shelves.find((s) => s.id === tank.shelfId)?.aquariums.find((a) => a.id === tank.aqId)
-      if (aq) drawTank(ctx, aq, tank, selectedId === aq.id, time)
-    }
+    ctx.fillText('В этом помещении нет стоек. Купите и разместите их ниже.', HALL_WIDTH / 2, HALL_HEIGHT / 2 - 40)
   }
 }

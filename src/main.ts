@@ -13,7 +13,7 @@ import { availableStock, buyPrice, dailyUpkeep, wholesalePrice } from './sim/eco
 import { arrivalInterval, generateOrder, shopAttractiveness, updateMarket } from './sim/buyers'
 import { clearSave, loadState, saveState } from './save'
 import { renderAquarium } from './ui/render'
-import { drawHall, layoutHall, layoutStorageObjects, HALL_HEIGHT, HALL_WIDTH } from './ui/renderHall'
+import { drawHall, layoutFurniture, layoutHall, layoutStorageObjects, HALL_HEIGHT, HALL_WIDTH } from './ui/renderHall'
 import { buildApp } from './ui/panels'
 import type { AquariumState, DecorKind, EquipmentId, FishInstance, FishSpecies, FurnitureId, GameState, LogKind, Order, ShelfState, TankState } from './types'
 
@@ -626,6 +626,14 @@ hallCanvas.addEventListener('click', (e) => {
   for (const obj of layoutStorageObjects(state)) {
     if (sx >= obj.x && sx <= obj.x + obj.w && sy >= obj.y && sy <= obj.y + obj.h) {
       ui.openStorageModal()
+      return
+    }
+  }
+  const furniture = [...layoutFurniture(state)].sort((a, b) => b.box.wz - a.box.wz || b.box.wx - a.box.wx)
+  for (const f of furniture) {
+    if (sx >= f.x && sx <= f.x + f.w && sy >= f.y && sy <= f.y + f.h) {
+      if (f.id === 'displayRack') ui.openStorageModal()
+      else ui.openFurnitureModal(f.id)
       return
     }
   }
