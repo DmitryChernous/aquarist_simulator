@@ -149,8 +149,7 @@ body {
 }
 .tab#tab-zal,
 .tab#tab-storage,
-.tab#tab-orders,
-.tab#tab-furn {
+.tab#tab-orders {
   flex-direction: column;
 }
 
@@ -548,6 +547,24 @@ body {
   gap: 6px;
   margin-bottom: 10px;
   flex-wrap: wrap;
+}
+
+.store-mode {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.store-mode .seg-btn {
+  padding: 8px 18px;
+  font-size: 14px;
+}
+.store-group .tank-bar {
+  margin-bottom: 8px;
+}
+.store-bar-hint {
+  font-size: 13px;
+  color: #9fb6cd;
 }
 
 .seg-btn {

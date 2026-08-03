@@ -191,9 +191,23 @@ export interface FishInstance {
   diseased: boolean // болеет ли
 }
 
+// --- Мебель магазина ---
+export type FurnitureId = 'coffeeTable' | 'armchair' | 'sofa' | 'displayRack'
+
+export interface FurnitureDef {
+  id: FurnitureId
+  name: string
+  price: number
+  desc: string
+  attractBonus?: number // +к привлекательности зала
+  conversionBonus?: number // +к шансу конверсии покупателя (доля)
+  displaySlots?: number // стеллаж-витрина: позиций на одну витрину
+  upkeep?: number // ежедневное содержание
+}
+
 export interface ShopState {
   cashRegister: boolean
-  restAreas: number
+  furniture: Partial<Record<FurnitureId, number>> // купленная мебель (вкл. стеллаж-витрину)
   componentRacks: number
   rackInventory: EquipmentId[] // оборудование на полке склада
   rackDecor: DecorKind[] // декорации на складе
@@ -201,10 +215,13 @@ export interface ShopState {
 }
 
 export type OrderKind = 'demand' | 'display'
+export type OrderItemType = 'fish' | 'equip' | 'decor'
 
 export interface Order {
   id: string
-  speciesId: string
+  itemType: OrderItemType
+  speciesId: string // для рыб (itemType === 'fish')
+  itemId?: string // для оборудования/декора (itemType === 'equip' | 'decor')
   qty: number
   unitPrice: number
   timeLeft: number

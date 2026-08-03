@@ -1,5 +1,6 @@
-import type { FishSpecies, GameState } from '../types'
+import type { DecorKind, EquipmentId, FishSpecies, GameState } from '../types'
 import { allAquariums } from './aquarium'
+import { furnitureUpkeep } from '../data/furniture'
 
 const DAILY_RENT = 50
 
@@ -27,8 +28,16 @@ export function availableStock(state: GameState, speciesId: string): number {
   return n
 }
 
+export function equipmentStock(state: GameState, id: EquipmentId): number {
+  return state.shop.rackInventory.filter((e) => e === id).length
+}
+
+export function decorStock(state: GameState, kind: DecorKind): number {
+  return state.shop.rackDecor.filter((d) => d === kind).length
+}
+
 export function dailyUpkeep(state: GameState, speciesById: Record<string, FishSpecies>): number {
-  let cost = DAILY_RENT
+  let cost = DAILY_RENT + furnitureUpkeep(state.shop)
   for (const aq of allAquariums(state)) {
     for (const fish of aq.fish) cost += speciesById[fish.speciesId].sizeCm * 0.1
     for (const _eq of aq.equipment) cost += 4

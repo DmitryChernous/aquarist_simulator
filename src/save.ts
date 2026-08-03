@@ -1,7 +1,8 @@
-import type { AquariumState, GameState, RoomId, TankState } from './types'
+import type { AquariumState, FurnitureId, GameState, RoomId, TankState } from './types'
 import { FISH_SPECIES } from './data/fish'
 import { AQUARIUM_MODELS } from './data/aquarium'
 import { EQUIPMENT } from './data/shop'
+import { FURNITURE } from './data/furniture'
 
 const KEY = 'aquarist-save-v4'
 export const START_MONEY = 5000
@@ -23,6 +24,19 @@ function eqInstances(ids: string[]): AquariumState['equipment'] {
     result.push({ id: def.id, settings: Object.fromEntries(def.params.map((p) => [p.id, p.default])) })
   }
   return result
+}
+
+function migrateFurniture(shop: any): Partial<Record<FurnitureId, number>> {
+  const raw = shop?.furniture
+  if (raw && typeof raw === 'object') {
+    const out: Partial<Record<FurnitureId, number>> = {}
+    for (const [id, n] of Object.entries(raw)) {
+      if (FURNITURE[id as FurnitureId] && Number(n) > 0) out[id as FurnitureId] = Number(n)
+    }
+    return out
+  }
+  const rest = Number(shop?.restAreas ?? 0)
+  return rest > 0 ? { coffeeTable: rest } : {}
 }
 
 export function defaultState(): GameState {
@@ -49,7 +63,7 @@ export function defaultState(): GameState {
     money: START_MONEY,
     shop: {
       cashRegister: false,
-      restAreas: 0,
+      furniture: {},
       componentRacks: 1,
       rackInventory: ['heater', 'thermometer', 'airPump', 'filter'],
       rackDecor: [],
@@ -155,6 +169,7 @@ export function loadState(): GameState {
         shop: {
           ...base.shop,
           ...(parsed.shop ?? {}),
+          furniture: migrateFurniture(parsed.shop),
           shelvesInventory: parsed.shop?.shelvesInventory ?? [],
           rackDecor: parsed.shop?.rackDecor ?? base.shop.rackDecor,
         },
@@ -173,7 +188,7 @@ export function loadState(): GameState {
           money: Number.isFinite(Number(old.money)) ? Number(old.money) : START_MONEY,
           shop: {
             cashRegister: Boolean(old.shop?.cashRegister),
-            restAreas: Number(old.shop?.restAreas ?? 0),
+            furniture: migrateFurniture(old.shop),
             componentRacks: Number(old.shop?.componentRacks ?? 0),
             rackInventory: Array.isArray(old.shop?.rackInventory) ? old.shop.rackInventory : [],
             rackDecor: Array.isArray(old.shop?.rackDecor) ? old.shop.rackDecor : [],

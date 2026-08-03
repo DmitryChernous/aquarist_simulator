@@ -1,6 +1,10 @@
-import type { AquariumState, GameState, Order, TankState } from '../types'
+import type { AquariumState, DecorKind, EquipmentId, GameState, Order, TankState } from '../types'
 import { MAX_DESIGN_LEVEL } from '../data/aquarium'
 import { FISH_SPECIES, SPECIES_BY_ID } from '../data/fish'
+import { EQUIPMENT } from '../data/shop'
+import { DECOR } from '../data/decor'
+import { displayCapacity, furnitureAttractBonus, furnitureConversionBonus } from '../data/furniture'
+import { decorStock, equipmentStock } from './economy'
 import { allAquariums, aquariumsInRoom } from './aquarium'
 
 export function tankAttractiveness(aq: AquariumState): number {
@@ -37,7 +41,7 @@ export function shopAttractiveness(state: GameState): number {
   const diversity = Math.min(speciesSet.size / 6, 1) * 100
   const hallShelves = state.shelves.filter((s) => s.roomId === 'hall').length
   const equipment = Math.min(
-    state.shop.restAreas * 8 + state.shop.componentRacks * 3 + hallShelves * 2,
+    furnitureAttractBonus(state.shop) + state.shop.componentRacks * 3 + hallShelves * 2,
     25,
   )
 
@@ -59,7 +63,7 @@ export function conversionChance(state: GameState): number {
     }
   }
   const avg = healthCount ? healthSum / healthCount : 0
-  return Math.max(0.08, Math.min(0.95, 0.25 + shopAtt / 150 + state.shop.restAreas * 0.05 + (avg - 50) / 200))
+  return Math.max(0.08, Math.min(0.95, 0.25 + shopAtt / 150 + furnitureConversionBonus(state.shop) + (avg - 50) / 200))
 }
 
 export function speciesDisplayScore(state: GameState, speciesId: string): number {
@@ -99,6 +103,14 @@ function pickWeighted(values: string[], weights: number[]): string {
 export function generateOrder(state: GameState): Order | null {
   if (Math.random() >= conversionChance(state)) return null
 
+  const capacity = displayCapacity(state.shop)
+  if (capacity > 0 && (state.shop.rackInventory.length > 0 || state.shop.rackDecor.length > 0)) {
+    if (Math.random() < 0.35) {
+      const itemOrder = generateItemOrder(state, capacity)
+      if (itemOrder) return itemOrder
+    }
+  }
+
   const inStock = new Set<string>()
   for (const t of allStorage2(state)) for (const item of t.stock) if (item.count > 0) inStock.add(item.speciesId)
   const onDisplay = new Set<string>()
@@ -127,18 +139,51 @@ export function generateOrder(state: GameState): Order | null {
     const quality = speciesDisplayScore(state, speciesId)
     qty = 1 + Math.floor(Math.random() * 2)
     const f = state.market[speciesId] ?? 1
-    const priceBoost = 0.85 + 0.3 * quality + state.shop.restAreas * 0.02
+    const priceBoost = 0.85 + 0.3 * quality + furnitureConversionBonus(state.shop) * 0.4
     unitPrice = Math.round(SPECIES_BY_ID[speciesId].sellPrice * f * priceBoost)
     kind = 'display'
   }
 
   return {
     id: `o${state.epoch}-${Math.random().toString(36).slice(2, 7)}`,
+    itemType: 'fish',
     speciesId,
     qty,
     unitPrice,
     timeLeft: 18 + Math.random() * 22,
     kind,
+  }
+}
+
+function generateItemOrder(state: GameState, capacity: number): Order | null {
+  const items: { itemType: 'equip' | 'decor'; itemId: string; price: number }[] = []
+  const eqSet = new Set<EquipmentId>()
+  for (const eid of state.shop.rackInventory) eqSet.add(eid)
+  for (const eid of eqSet) items.push({ itemType: 'equip', itemId: eid, price: EQUIPMENT[eid].price })
+  const decSet = new Set<DecorKind>()
+  for (const k of state.shop.rackDecor) decSet.add(k)
+  for (const k of decSet) items.push({ itemType: 'decor', itemId: k, price: DECOR[k].price })
+  if (items.length === 0) return null
+
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[items[i], items[j]] = [items[j], items[i]]
+  }
+  const pool = items.slice(0, Math.max(1, Math.min(capacity, items.length)))
+  const item = pool[Math.floor(Math.random() * pool.length)]
+  const inStock = item.itemType === 'equip' ? equipmentStock(state, item.itemId as EquipmentId) : decorStock(state, item.itemId as DecorKind)
+  const qty = Math.min(item.itemType === 'equip' ? 1 : 2, inStock)
+  if (qty <= 0) return null
+
+  return {
+    id: `o${state.epoch}-${Math.random().toString(36).slice(2, 7)}`,
+    itemType: item.itemType,
+    speciesId: '',
+    itemId: item.itemId,
+    qty,
+    unitPrice: Math.round(item.price * 1.4),
+    timeLeft: 18 + Math.random() * 22,
+    kind: 'display',
   }
 }
 

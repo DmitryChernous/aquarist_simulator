@@ -4,6 +4,7 @@ import { SPECIES_BY_ID } from './data/fish'
 import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from './data/aquarium'
 import { EQUIPMENT, SHELVES, STORAGE_TANK_PRICE, fitsOnSlab, rackCapacity, shelfLoadLeft } from './data/shop'
 import { DECOR } from './data/decor'
+import { FURNITURE } from './data/furniture'
 import { ROOM_BY_ID } from './data/rooms'
 import { DAY_DURATION_SECONDS } from './timing'
 import { allAquariums, canStock, recalcWater, tickWater, usedVolume } from './sim/aquarium'
@@ -14,7 +15,7 @@ import { clearSave, loadState, saveState } from './save'
 import { renderAquarium } from './ui/render'
 import { drawHall, layoutHall, HALL_HEIGHT, HALL_WIDTH } from './ui/renderHall'
 import { buildApp } from './ui/panels'
-import type { AquariumState, EquipmentId, FishInstance, FishSpecies, GameState, LogKind, ShelfState, TankState } from './types'
+import type { AquariumState, DecorKind, EquipmentId, FishInstance, FishSpecies, FurnitureId, GameState, LogKind, Order, ShelfState, TankState } from './types'
 
 const TANK = { width: 960, height: 420 }
 const LOG_LIMIT = 40
@@ -89,6 +90,41 @@ function takeStock(speciesId: string, n: number): number {
     if (item.count <= 0) tank.stock = tank.stock.filter((s) => s.speciesId !== speciesId)
   }
   return n - need
+}
+
+function itemStock(o: Order): number {
+  if (o.itemType === 'equip') return state.shop.rackInventory.filter((e) => e === o.itemId).length
+  if (o.itemType === 'decor') return state.shop.rackDecor.filter((d) => d === o.itemId).length
+  return availableStock(state, o.speciesId)
+}
+
+function takeItems(o: Order, n: number): void {
+  if (o.itemType === 'fish') {
+    takeStock(o.speciesId, n)
+    return
+  }
+  let need = n
+  if (o.itemType === 'equip') {
+    for (let i = state.shop.rackInventory.length - 1; i >= 0 && need > 0; i--) {
+      if (state.shop.rackInventory[i] === o.itemId) {
+        state.shop.rackInventory.splice(i, 1)
+        need--
+      }
+    }
+  } else {
+    for (let i = state.shop.rackDecor.length - 1; i >= 0 && need > 0; i--) {
+      if (state.shop.rackDecor[i] === o.itemId) {
+        state.shop.rackDecor.splice(i, 1)
+        need--
+      }
+    }
+  }
+}
+
+function orderLabel(o: Order): string {
+  if (o.itemType === 'equip') return EQUIPMENT[o.itemId as EquipmentId]?.name ?? o.itemId ?? ''
+  if (o.itemType === 'decor') return DECOR[o.itemId as DecorKind]?.name ?? o.itemId ?? ''
+  return SPECIES_BY_ID[o.speciesId]?.name ?? o.speciesId
 }
 
 const ui = buildApp({
@@ -198,16 +234,26 @@ const ui = buildApp({
     bump()
   },
   onBuyShopItem(kind) {
-    const PRICES = { cashRegister: 300, restArea: 250, componentRack: 150 }
+    const PRICES = { cashRegister: 300, componentRack: 150 }
     if (state.money < PRICES[kind]) {
       ui.flash('Не хватает денег!')
       return
     }
     state.money -= PRICES[kind]
     if (kind === 'cashRegister') state.shop.cashRegister = true
-    else if (kind === 'restArea') state.shop.restAreas += 1
     else if (kind === 'componentRack') state.shop.componentRacks += 1
     pushLog(`Куплено оборудование зала за ${PRICES[kind]}₽`, 'buy')
+    bump()
+  },
+  onBuyFurniture(id: FurnitureId) {
+    const def = FURNITURE[id]
+    if (state.money < def.price) {
+      ui.flash('Не хватает денег!')
+      return
+    }
+    state.money -= def.price
+    state.shop.furniture[id] = (state.shop.furniture[id] ?? 0) + 1
+    pushLog(`Куплена мебель «${def.name}» за ${def.price}₽`, 'buy')
     bump()
   },
   onAddAquarium(shelfId, modelId) {
@@ -524,16 +570,16 @@ onInstallEquipment(id, aqId) {
     const idx = state.orders.findIndex((o) => o.id === orderId)
     if (idx < 0) return
     const order = state.orders[idx]
-    if (availableStock(state, order.speciesId) < order.qty) {
-      ui.flash('Не хватает рыб на складе!')
+    if (itemStock(order) < order.qty) {
+      ui.flash('Не хватает товара на складе!')
       return
     }
-    takeStock(order.speciesId, order.qty)
+    takeItems(order, order.qty)
     const revenue = order.unitPrice * order.qty
     state.money += revenue
     state.sales += order.qty
     state.orders.splice(idx, 1)
-    pushLog(`Продано ${order.qty} × ${SPECIES_BY_ID[order.speciesId].name} за ${revenue}₽`, 'sell')
+    pushLog(`Продано ${order.qty} × ${orderLabel(order)} за ${revenue}₽`, 'sell')
     bump()
   },
   onAddStorage() {
@@ -668,7 +714,7 @@ function tryArrive(): void {
   if (order) {
     state.orders.push(order)
     state.totalVisitors += 1
-    pushLog(`Покупатель хочет ${SPECIES_BY_ID[order.speciesId].name} ×${order.qty} (${order.kind === 'demand' ? 'по спросу' : 'по витрине'})`, 'info')
+    pushLog(`Покупатель хочет ${orderLabel(order)} ×${order.qty} (${order.kind === 'demand' ? 'по спросу' : 'по витрине'})`, 'info')
   }
   state.nextVisitorIn = arrivalInterval(shopAttractiveness(state), state.shop.cashRegister)
   bump()
