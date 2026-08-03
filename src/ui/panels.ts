@@ -1346,7 +1346,7 @@ export function buildApp(actions: UIActions) {
     }
   }
 
-  return { update, flash, selectTab: (tab: TabName) => switchTab(app, tab), openShelfMenu: (id: string) => openShelfMenu(id, latestState) }
+  return { update, flash, selectTab: (tab: TabName) => switchTab(app, tab), openShelfMenu: (id: string) => openShelfMenu(id, latestState), openStorageModal: () => openStorageModal(latestState) }
 }
 
 function switchTab(app: HTMLElement, tab: TabName): void {

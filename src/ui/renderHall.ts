@@ -1,6 +1,6 @@
 import type { GameState } from '../types'
 import { SPECIES_BY_ID } from '../data/fish'
-import { shelfUsedLiters } from '../data/shop'
+import { shelfUsedLiters, storageCapacity, storageUsed } from '../data/shop'
 import { ROOM_BY_ID } from '../data/rooms'
 
 export const HALL_WIDTH = 960
@@ -26,6 +26,15 @@ export interface ShelfRect {
   tanks: TankRect[]
 }
 
+export interface StorageObjectRect {
+  id: 'componentRacks' | 'displayRack'
+  label: string
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 function hash(s: string): number {
   let h = 0
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
@@ -36,10 +45,33 @@ const PAD = 20
 const GAP = 30
 const FLOOR_Y = HALL_HEIGHT - 44
 const TOP_Y = 76
+const STORAGE_BAND_H = 96
+
+function storageBandVisible(state: GameState): boolean {
+  return state.viewRoom === 'storage' && (state.shop.componentRacks > 0 || (state.shop.furniture?.displayRack ?? 0) > 0)
+}
+
+export function layoutStorageObjects(state: GameState): StorageObjectRect[] {
+  const out: StorageObjectRect[] = []
+  if (!storageBandVisible(state)) return out
+  const y = FLOOR_Y - STORAGE_BAND_H + 24
+  const h = STORAGE_BAND_H - 24
+  let cursor = PAD
+  const mk = (id: StorageObjectRect['id'], label: string): void => {
+    const w = 220
+    out.push({ id, label, x: cursor, y, w, h })
+    cursor += w + GAP
+  }
+  if (state.shop.componentRacks > 0) mk('componentRacks', `Полка комплектующих ×${state.shop.componentRacks}`)
+  const displays = state.shop.furniture?.displayRack ?? 0
+  if (displays > 0) mk('displayRack', `Стеллаж-витрина ×${displays}`)
+  return out
+}
 
 export function layoutHall(state: GameState): { shelves: ShelfRect[] } {
   const shelves: ShelfRect[] = []
-  const bodyH = FLOOR_Y - TOP_Y
+  const bottom = FLOOR_Y - (storageBandVisible(state) ? STORAGE_BAND_H : 0)
+  const bodyH = bottom - TOP_Y
 
   const roomShelves = state.shelves.filter((s) => s.roomId === state.viewRoom)
 
@@ -54,7 +86,7 @@ export function layoutHall(state: GameState): { shelves: ShelfRect[] } {
     const slabH = bodyH / Math.max(1, shelf.slabs.length)
 
     const tanks: TankRect[] = []
-    let cy = FLOOR_Y
+    let cy = bottom
     for (const slab of shelf.slabs) {
       const aq = shelf.aquariums.find((a) => a.slabId === slab.id)
 if (aq) {
@@ -144,7 +176,45 @@ export function drawHall(ctx: CanvasRenderingContext2D, state: GameState, select
   ctx.fillText(`${room.icon} ${room.name} — ${room.desc}`, PAD, 26)
 
   const { shelves } = layoutHall(state)
-  if (shelves.length === 0) {
+  const band = layoutStorageObjects(state)
+
+  if (band.length > 0) {
+    ctx.fillStyle = '#7c6145'
+    ctx.fillRect(PAD, FLOOR_Y - STORAGE_BAND_H, HALL_WIDTH - PAD * 2, STORAGE_BAND_H)
+    ctx.strokeStyle = 'rgba(46,32,22,0.45)'
+    ctx.lineWidth = 2
+    ctx.strokeRect(PAD, FLOOR_Y - STORAGE_BAND_H, HALL_WIDTH - PAD * 2, STORAGE_BAND_H)
+    for (let i = PAD; i < HALL_WIDTH - PAD; i += 22) {
+      ctx.beginPath()
+      ctx.moveTo(i, FLOOR_Y - STORAGE_BAND_H)
+      ctx.lineTo(i, FLOOR_Y)
+      ctx.stroke()
+    }
+    ctx.fillStyle = '#f3e9d2'
+    ctx.font = 'bold 12px system-ui'
+    ctx.fillText('Место хранения', PAD + 4, FLOOR_Y - STORAGE_BAND_H + 16)
+
+    const used = storageUsed(state.shop)
+    const cap = storageCapacity(state.shop)
+    for (const obj of band) {
+      ctx.fillStyle = '#5b4127'
+      ctx.fillRect(obj.x, obj.y, obj.w, obj.h)
+      ctx.strokeStyle = '#2e2016'
+      ctx.lineWidth = 2
+      ctx.strokeRect(obj.x, obj.y, obj.w, obj.h)
+      ctx.fillStyle = '#f3e9d2'
+      ctx.font = 'bold 13px system-ui'
+      ctx.textAlign = 'left'
+      ctx.fillText(obj.label, obj.x + 10, obj.y + 24)
+      ctx.font = '12px system-ui'
+      ctx.fillStyle = 'rgba(243,233,210,0.9)'
+      ctx.fillText(`занято ${used}/${cap} мест`, obj.x + 10, obj.y + 44)
+      ctx.fillStyle = 'rgba(243,233,210,0.65)'
+      ctx.fillText('нажмите, чтобы открыть', obj.x + 10, obj.y + obj.h - 10)
+    }
+  }
+
+  if (shelves.length === 0 && band.length === 0) {
     ctx.fillStyle = 'rgba(46,32,22,0.55)'
     ctx.font = '14px system-ui'
     ctx.textAlign = 'center'

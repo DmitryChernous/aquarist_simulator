@@ -13,7 +13,7 @@ import { availableStock, buyPrice, dailyUpkeep, wholesalePrice } from './sim/eco
 import { arrivalInterval, generateOrder, shopAttractiveness, updateMarket } from './sim/buyers'
 import { clearSave, loadState, saveState } from './save'
 import { renderAquarium } from './ui/render'
-import { drawHall, layoutHall, HALL_HEIGHT, HALL_WIDTH } from './ui/renderHall'
+import { drawHall, layoutHall, layoutStorageObjects, HALL_HEIGHT, HALL_WIDTH } from './ui/renderHall'
 import { buildApp } from './ui/panels'
 import type { AquariumState, DecorKind, EquipmentId, FishInstance, FishSpecies, FurnitureId, GameState, LogKind, Order, ShelfState, TankState } from './types'
 
@@ -623,6 +623,12 @@ hallCanvas.addEventListener('click', (e) => {
   const rect = hallCanvas.getBoundingClientRect()
   const sx = ((e.clientX - rect.left) / rect.width) * HALL_WIDTH
   const sy = ((e.clientY - rect.top) / rect.height) * HALL_HEIGHT
+  for (const obj of layoutStorageObjects(state)) {
+    if (sx >= obj.x && sx <= obj.x + obj.w && sy >= obj.y && sy <= obj.y + obj.h) {
+      ui.openStorageModal()
+      return
+    }
+  }
   const { shelves } = layoutHall(state)
   for (const shelf of shelves) {
     for (const tank of shelf.tanks) {
