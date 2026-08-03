@@ -53,7 +53,7 @@ export interface UIActions {
   onReset(): void
 }
 
-type TabName = 'zal' | 'aquarium' | 'storage' | 'store' | 'orders'
+type TabName = 'zal' | 'aquarium' | 'store' | 'orders'
 
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -184,6 +184,7 @@ export function buildApp(actions: UIActions) {
   const roomSwitch = app.querySelector<HTMLDivElement>('.room-switch')!
   const ordersPanel = app.querySelector<HTMLDivElement>('.orders-panel')!
 
+  const storageBlock = app.querySelector<HTMLDivElement>('#storageBlock')!
   const storageSelect = app.querySelector<HTMLSelectElement>('#storageSelect')!
   const storageCards = app.querySelector<HTMLDivElement>('.storage-cards')!
   const addStorageBtn = app.querySelector<HTMLButtonElement>('#addStorage')!
@@ -277,7 +278,6 @@ export function buildApp(actions: UIActions) {
       renderZal(state)
       renderOrders(state)
       renderAquarium(state)
-      renderStorage(state)
       renderStore(state)
       renderLog(state)
     }
@@ -363,11 +363,14 @@ export function buildApp(actions: UIActions) {
       card.append(body)
       hallList.append(card)
     }
+
+    storageBlock.style.display = state.viewRoom === 'storage' ? '' : 'none'
+    if (state.viewRoom === 'storage') renderStorage(state)
   }
 
   function openAddShelfModal(s: GameState): void {
     const { body } = overlay('Купить стойку (на склад)')
-    body.append(el('div', 'comp-hint', 'Купленная стойка появляется на складе. Затем разместите её в помещении через «Разместить стойку».'))
+    body.append(el('div', 'comp-hint', 'Купленная стойка появляется в разделе «Стойки на складе» (помещение «Склад»). Затем разместите её в помещении через «Разместить стойку».'))
     for (const specId of Object.keys(SHELVES)) {
       const spec = SHELVES[specId as keyof typeof SHELVES]
       const row = el('div', 'modal-row')
@@ -675,7 +678,7 @@ export function buildApp(actions: UIActions) {
 
       body.append(el('div', 'list-title', 'На складе'))
       if (s.shop.rackInventory.length === 0) {
-        body.append(el('div', 'empty', 'На складе нет оборудования. Купите на вкладке «Склад».'))
+        body.append(el('div', 'empty', 'На складе нет оборудования. Купите в «Магазине» → «Для продажи» → «Оборудование».'))
       }
       for (const eid of s.shop.rackInventory) {
         const def = EQUIPMENT[eid]
@@ -944,10 +947,9 @@ export function buildApp(actions: UIActions) {
     for (const t of state.storage) {
       const card = el('div', 'tank-card')
       card.append(el('span', 'badge badge-storage', 'Склад'), el('strong', '', t.name), el('div', 'tank-card-line', `Рыб на хранении: ${stockTotal(t.stock)}`))
-      const openBtn = el('button', 'btn small', 'Открыть')
+      const openBtn = el('button', 'btn small', 'Выбрать')
       openBtn.addEventListener('click', () => {
         actions.onSelectStorage(t.id)
-        switchTab(app, 'storage')
       })
       card.append(openBtn)
       storageCards.append(card)
@@ -1328,7 +1330,6 @@ function buildLayout(): HTMLElement {
   nav.append(
     tabButton('zal', 'Помещения', true),
     tabButton('aquarium', 'Аквариум', false),
-    tabButton('storage', 'Склад', false),
     tabButton('store', 'Магазин', false),
     tabButton('orders', 'Заказы', false),
     el('button', 'tab-btn disabled', 'Опт'),
@@ -1347,6 +1348,27 @@ function buildLayout(): HTMLElement {
     el('div', 'hall-actions'),
     el('div', 'hall-list'),
   )
+
+  const storageBlock = el('div', 'storage-block')
+  storageBlock.id = 'storageBlock'
+  const storageBar = el('div', 'tank-bar')
+  storageBar.append(el('label', '', 'Склад: '))
+  const storageSelect = el('select')
+  storageSelect.id = 'storageSelect'
+  storageBar.append(storageSelect)
+  storageBlock.append(
+    el('h2', 'sec-title', 'Склады'),
+    storageBar,
+    el('div', 'tank-cards storage-cards'),
+    addStorageButton(),
+    el('h2', 'sec-title', 'Стойки на складе'),
+    el('div', 'shelf-inventory'),
+    el('h2', 'sec-title', 'Рыбы «на продажу»'),
+    el('div', 'stock-list'),
+    el('h2', 'sec-title', 'Полка для комплектующих'),
+    el('div', 'rack-panel'),
+  )
+  zalTab.append(storageBlock)
 
   const ordersTab = el('section', 'tab')
   ordersTab.id = 'tab-orders'
@@ -1378,26 +1400,6 @@ function buildLayout(): HTMLElement {
   aqBody.append(aqStage, aqInfo)
   const aqActions = el('div', 'aq-actions')
   aquariumTab.append(aqBody, aqActions)
-
-  const storageTab = el('section', 'tab')
-  storageTab.id = 'tab-storage'
-  const storageBar = el('div', 'tank-bar')
-  storageBar.append(el('label', '', 'Склад: '))
-  const storageSelect = el('select')
-  storageSelect.id = 'storageSelect'
-  storageBar.append(storageSelect)
-  storageTab.append(
-    storageBar,
-    el('h2', 'sec-title', 'Склады'),
-    el('div', 'tank-cards storage-cards'),
-    addStorageButton(),
-    el('h2', 'sec-title', 'Стойки на складе'),
-    el('div', 'shelf-inventory'),
-    el('h2', 'sec-title', 'Рыбы «на продажу»'),
-    el('div', 'stock-list'),
-    el('h2', 'sec-title', 'Полка для комплектующих'),
-    el('div', 'rack-panel'),
-  )
 
   const storeTab = el('section', 'tab')
   storeTab.id = 'tab-store'
@@ -1439,7 +1441,7 @@ function buildLayout(): HTMLElement {
 
   storeTab.append(storeMode, saleGroup, furnGroup)
 
-  main.append(zalTab, aquariumTab, storageTab, storeTab, ordersTab)
+  main.append(zalTab, aquariumTab, storeTab, ordersTab)
 
   const footer = el('footer', 'log-panel')
   const footHead = el('div', 'log-head')
