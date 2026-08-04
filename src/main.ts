@@ -115,7 +115,7 @@ function orderLabel(o: Order): string {
 }
 
 const ui = buildApp({
-  onBuyShelf(specId) {
+  onBuyShelf(specId, roomId) {
     const spec = SHELVES[specId as keyof typeof SHELVES]
     if (!spec) return
     if (state.money < spec.price) {
@@ -123,19 +123,6 @@ const ui = buildApp({
       return
     }
     state.money -= spec.price
-    state.shop.shelvesInventory.push(specId)
-    pushLog(`Куплена стойка «${spec.name}» за ${spec.price}₽ — на складе`, 'buy')
-    bump()
-  },
-  onPlaceShelf(specId, roomId) {
-    const spec = SHELVES[specId as keyof typeof SHELVES]
-    if (!spec) return
-    const idx = state.shop.shelvesInventory.indexOf(specId)
-    if (idx < 0) {
-      ui.flash('Такой стойки нет на складе!')
-      return
-    }
-    state.shop.shelvesInventory.splice(idx, 1)
     const id = uid('sh')
     const name = `Стойка ${state.shelves.length + 1}`
     const shelf: ShelfState = {
@@ -150,7 +137,7 @@ const ui = buildApp({
     }
     state.shelves.push(shelf)
     state.viewRoom = roomId
-    pushLog(`Стойка «${spec.name}» размещена в помещении «${ROOM_BY_ID[roomId].name}»`, 'info')
+    pushLog(`Куплена и размещена стойка «${spec.name}» в помещении «${ROOM_BY_ID[roomId].name}» за ${spec.price}₽`, 'buy')
     bump()
   },
   onViewRoom(roomId) {
@@ -202,16 +189,6 @@ const ui = buildApp({
     pushLog(`Стойка «${shelf.name}» продана за ${refund}₽ (${n} аквариум(ов) удалено)`, 'sell')
     bump()
   },
-  onSellInventoryShelf(specId) {
-    const idx = state.shop.shelvesInventory.indexOf(specId)
-    if (idx < 0) return
-    state.shop.shelvesInventory.splice(idx, 1)
-    const spec = SHELVES[specId as keyof typeof SHELVES]
-    const refund = spec ? Math.floor(spec.price * 0.5) : 0
-    state.money += refund
-    pushLog(`Стойка «${spec?.name}» продана со склада за ${refund}₽`, 'sell')
-    bump()
-  },
   onBuyShopItem(kind) {
     const PRICES = { cashRegister: 300 }
     if (state.money < PRICES[kind]) {
@@ -223,8 +200,8 @@ const ui = buildApp({
     pushLog(`Куплено оборудование зала за ${PRICES[kind]}₽`, 'buy')
     bump()
   },
-  onBuyStorageRack() {
-    if (state.shop.storageRacks * STORAGE_RACK_CAPACITY >= STORAGE_MAX_SLOTS) {
+  onBuyRack(roomId) {
+    if (state.racks.length * STORAGE_RACK_CAPACITY >= STORAGE_MAX_SLOTS) {
       ui.flash('Достигнут предел вместимости склада!')
       return
     }
@@ -233,8 +210,9 @@ const ui = buildApp({
       return
     }
     state.money -= STORAGE_TANK_PRICE
-    state.shop.storageRacks += 1
-    pushLog(`Куплен стеллаж за ${STORAGE_TANK_PRICE}₽ (+${STORAGE_RACK_CAPACITY} мест)`, 'buy')
+    state.racks.push({ id: uid('rk'), roomId })
+    state.viewRoom = roomId
+    pushLog(`Куплен и размещён стеллаж в «${ROOM_BY_ID[roomId].name}» за ${STORAGE_TANK_PRICE}₽ (+${STORAGE_RACK_CAPACITY} мест)`, 'buy')
     bump()
   },
   onBuyFurniture(id: FurnitureId) {
@@ -308,7 +286,7 @@ const ui = buildApp({
       ui.flash('Не хватает денег!')
       return
     }
-    if (storageUsed(state.shop) >= storageCapacity(state.shop)) {
+    if (storageUsed(state.shop) >= storageCapacity(state.racks.length)) {
       ui.flash('Место на складе закончилось! Купите стеллаж в «Магазине».')
       return
     }
@@ -460,7 +438,7 @@ onInstallEquipment(id, aqId) {
       ui.flash('Не хватает денег!')
       return
     }
-    if (storageUsed(state.shop) >= storageCapacity(state.shop)) {
+    if (storageUsed(state.shop) >= storageCapacity(state.racks.length)) {
       ui.flash('Место на складе закончилось! Купите стеллаж в «Магазине».')
       return
     }

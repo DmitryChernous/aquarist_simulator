@@ -65,12 +65,11 @@ export function defaultState(): GameState {
     shop: {
       cashRegister: false,
       furniture: {},
-      storageRacks: 1,
       rackInventory: ['heater', 'thermometer', 'airPump', 'filter'],
       rackDecor: [],
-      shelvesInventory: [],
     },
     shelves: [{ id: 'sh1', name: 'Стойка 1', roomId: 'hall', pos: { x: 0, y: 0 }, slabs, loadCapacityL: 300, specId: 'compact', aquariums: [aq] }],
+    racks: [{ id: 'r1', roomId: 'storage' }],
     storage: { id: 's1', name: 'Склад 1', kind: 'storage', stock: [] },
     market: Object.fromEntries(FISH_SPECIES.map((s) => [s.id, 1])),
     orders: [],
@@ -184,17 +183,18 @@ export function loadState(): GameState {
         })),
       }))
       const storage = normalizeStorage(parsed.storage, base.storage)
+      const rackCount = Math.max(1, Number(((parsed.shop as any)?.storageRacks ?? (parsed.shop as any)?.componentRacks ?? base.racks.length)))
+      const racks: { id: string; roomId: RoomId }[] = Array.from({ length: rackCount }, (_, i) => ({ id: `r${i + 1}`, roomId: 'storage' as RoomId }))
       return {
         ...base,
         ...parsed,
         storage,
+        racks,
         viewRoom: ((parsed as any).viewRoom ?? 'hall') as RoomId,
         shop: {
           ...base.shop,
           ...(parsed.shop ?? {}),
-          storageRacks: Number((parsed.shop?.storageRacks ?? (parsed.shop as any)?.componentRacks ?? base.shop.storageRacks)),
           furniture: migrateFurniture(parsed.shop),
-          shelvesInventory: parsed.shop?.shelvesInventory ?? [],
           rackDecor: parsed.shop?.rackDecor ?? base.shop.rackDecor,
         },
         shelves,
@@ -212,6 +212,7 @@ export function loadState(): GameState {
         if (ex) ex.count += it.count
         else mergedStock.push({ ...it })
       }
+      const rackCount = Math.max(1, Number(old.shop?.componentRacks ?? old.shop?.storageRacks ?? 1))
       localStorage.removeItem('aquarist-save-v3')
       return {
         ...defaultState(),
@@ -219,11 +220,10 @@ export function loadState(): GameState {
         shop: {
           cashRegister: Boolean(old.shop?.cashRegister),
           furniture: migrateFurniture(old.shop),
-          storageRacks: Number(old.shop?.componentRacks ?? old.shop?.storageRacks ?? 1),
           rackInventory: Array.isArray(old.shop?.rackInventory) ? old.shop.rackInventory : [],
           rackDecor: Array.isArray(old.shop?.rackDecor) ? old.shop.rackDecor : [],
-          shelvesInventory: [],
         },
+        racks: Array.from({ length: rackCount }, (_, i) => ({ id: `r${i + 1}`, roomId: 'storage' as RoomId })),
         shelves: [
           {
             id: 'sh1',

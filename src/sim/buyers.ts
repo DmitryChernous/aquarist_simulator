@@ -41,7 +41,7 @@ export function shopAttractiveness(state: GameState): number {
   const diversity = Math.min(speciesSet.size / 6, 1) * 100
   const hallShelves = state.shelves.filter((s) => s.roomId === 'hall').length
   const equipment = Math.min(
-    furnitureAttractBonus(state.shop) + state.shop.storageRacks * 3 + hallShelves * 2,
+    furnitureAttractBonus(state.shop) + state.racks.length * 3 + hallShelves * 2,
     25,
   )
 

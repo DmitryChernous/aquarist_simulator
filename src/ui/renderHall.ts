@@ -211,16 +211,10 @@ export function layoutFurniture(state: GameState): FurnitureRect[] {
 
 export function layoutStorageObjects(state: GameState): StorageObjectRect[] {
   const out: StorageObjectRect[] = []
-  if (state.viewRoom !== 'storage') return []
-  let cursor = 2
-  const add = (id: StorageObjectRect['id'], label: string): void => {
-    const b = makeBox(cursor, 6, cursor + 3, 7, 90)
-    out.push({ id, label, box: b, x: b.x, y: b.y - b.h, w: b.w, h: b.h })
-    cursor += 4
-  }
-  if (state.shop.storageRacks > 0) add('storageRacks', `Стеллаж ×${state.shop.storageRacks}`)
-  const displays = state.shop.furniture?.displayRack ?? 0
-  if (displays > 0) add('displayRack', `Витрина ×${displays}`)
+  const racksHere = state.racks.filter((r) => r.roomId === state.viewRoom).length
+  if (racksHere === 0) return out
+  const b = makeBox(2, 6, 5, 7, 90)
+  out.push({ id: 'storageRacks', label: `Стеллаж ×${racksHere}`, box: b, x: b.x, y: b.y - b.h, w: b.w, h: b.h })
   return out
 }
 
@@ -380,7 +374,7 @@ function drawStorageObject(ctx: CanvasRenderingContext2D, state: GameState, o: S
   const b = o.box
   drawBox(ctx, b, { front: '#5b4127', side: '#3f2c19', top: '#7c6145', edge: '#2e2016' })
   const used = storageUsed(state.shop)
-  const cap = storageCapacity(state.shop)
+  const cap = storageCapacity(state.racks.length)
   ctx.fillStyle = '#f3e9d2'
   ctx.font = 'bold 12px system-ui'
   ctx.textAlign = 'left'

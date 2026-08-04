@@ -96,8 +96,8 @@ export const SHELVES: Record<string, import('../types').ShelfSpec> = {
 export const SHELF_SPECS = Object.values(SHELVES)
 export type ShelfSpecId = keyof typeof SHELVES
 
-export function storageCapacity(shop: ShopState): number {
-  return Math.min(STORAGE_MAX_SLOTS, shop.storageRacks * STORAGE_RACK_CAPACITY)
+export function storageCapacity(rackCount: number): number {
+  return Math.min(STORAGE_MAX_SLOTS, rackCount * STORAGE_RACK_CAPACITY)
 }
 
 export function storageUsed(shop: ShopState): number {

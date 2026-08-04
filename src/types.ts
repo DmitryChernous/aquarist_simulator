@@ -214,10 +214,13 @@ export interface FurnitureDef {
 export interface ShopState {
   cashRegister: boolean
   furniture: Partial<Record<FurnitureId, number>> // купленная мебель (вкл. витрину)
-  storageRacks: number // стеллажи: каждый даёт +STORAGE_RACK_CAPACITY мест
   rackInventory: EquipmentId[] // оборудование на стеллаже склада
   rackDecor: DecorKind[] // декорации на складе
-  shelvesInventory: string[] // купленные, но ещё не размещённые стойки
+}
+
+export interface RackState {
+  id: string
+  roomId: RoomId
 }
 
 export type OrderKind = 'demand' | 'display'
@@ -246,6 +249,7 @@ export interface GameState {
   money: number
   shop: ShopState
   shelves: ShelfState[]
+  racks: RackState[] // стеллажи (хранилище инвентаря): каждый даёт +STORAGE_RACK_CAPACITY мест
   storage: TankState // единственный склад
   market: Record<string, number>
   orders: Order[]
