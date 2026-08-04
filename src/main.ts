@@ -234,7 +234,7 @@ const ui = buildApp({
     }
     state.money -= STORAGE_TANK_PRICE
     state.shop.storageRacks += 1
-    pushLog(`Куплен стеллаж склада за ${STORAGE_TANK_PRICE}₽ (+${STORAGE_RACK_CAPACITY} мест)`, 'buy')
+    pushLog(`Куплен стеллаж за ${STORAGE_TANK_PRICE}₽ (+${STORAGE_RACK_CAPACITY} мест)`, 'buy')
     bump()
   },
   onBuyFurniture(id: FurnitureId) {

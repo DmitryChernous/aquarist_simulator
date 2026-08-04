@@ -220,7 +220,7 @@ export function layoutStorageObjects(state: GameState): StorageObjectRect[] {
   }
   if (state.shop.storageRacks > 0) add('storageRacks', `Стеллаж ×${state.shop.storageRacks}`)
   const displays = state.shop.furniture?.displayRack ?? 0
-  if (displays > 0) add('displayRack', `Стеллаж-витрина ×${displays}`)
+  if (displays > 0) add('displayRack', `Витрина ×${displays}`)
   return out
 }
 

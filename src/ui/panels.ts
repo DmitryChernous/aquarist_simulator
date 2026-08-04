@@ -1021,7 +1021,7 @@ export function buildApp(actions: UIActions) {
     summary.append(bar)
     rackPanel.append(summary)
 
-    const goShop = el('button', 'btn small', 'Купить стеллаж или стеллаж-витрину')
+    const goShop = el('button', 'btn small', 'Купить стеллаж или витрину')
     goShop.addEventListener('click', () => {
       setStoreMode('furn')
       setStoreSection('equip')
@@ -1044,7 +1044,7 @@ export function buildApp(actions: UIActions) {
       objects.append(storageObjectCard(`Стеллаж ×${racks}`, `вместимость ${racks * STORAGE_RACK_CAPACITY} мест`, () => openStorageModal(state)))
     }
     if (displays > 0) {
-      objects.append(storageObjectCard(`Стеллаж-витрина ×${displays}`, 'показывает покупателям наличие товаров', () => openStorageModal(state)))
+      objects.append(storageObjectCard(`Витрина ×${displays}`, 'показывает покупателям наличие товаров', () => openStorageModal(state)))
     }
     if (racks === 0 && displays === 0) {
       objects.append(el('div', 'empty', 'Места для хранения нет. Купите стеллаж в «Обустройство» → «Оснащение».'))
@@ -1344,7 +1344,7 @@ export function buildApp(actions: UIActions) {
     const dcount = furnitureCount(shop, 'displayRack')
     const displayCard = el('div', 'store-card')
     displayCard.append(
-      el('strong', 'store-name', `Стеллаж-витрина ×${dcount}`),
+      el('strong', 'store-name', `Витрина ×${dcount}`),
       el('div', 'store-desc', 'Показывает покупателям наличие товаров со склада (вместимость склада не увеличивает)'),
     )
     const displayBtn = el('button', 'btn buy', 'Купить — 700₽')

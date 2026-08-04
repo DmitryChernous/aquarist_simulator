@@ -202,15 +202,20 @@ export interface FurnitureDef {
   desc: string
   attractBonus?: number // +к привлекательности зала
   conversionBonus?: number // +к шансу конверсии покупателя (доля)
-  displaySlots?: number // стеллаж-витрина: позиций на одну витрину
+  displaySlots?: number // витрина: позиций на одну витрину
   upkeep?: number // ежедневное содержание
 }
 
+// Терминология (единая по всему проекту):
+// - «Стойка»  — аквариумный стеллаж (state.shelves: 1 и более полок + аквариумы).
+// - «Стеллаж» — хранилище предметов (state.racks): оборудование и декор,
+//   размещается в помещении, каждый даёт +STORAGE_RACK_CAPACITY мест.
+// - «Витрина» (displayRack) — мебель в зале: демонстрирует ассортимент покупателям.
 export interface ShopState {
   cashRegister: boolean
-  furniture: Partial<Record<FurnitureId, number>> // купленная мебель (вкл. стеллаж-витрину)
-  storageRacks: number // стеллажи склада: каждый даёт +STORAGE_RACK_CAPACITY мест
-  rackInventory: EquipmentId[] // оборудование на полке склада
+  furniture: Partial<Record<FurnitureId, number>> // купленная мебель (вкл. витрину)
+  storageRacks: number // стеллажи: каждый даёт +STORAGE_RACK_CAPACITY мест
+  rackInventory: EquipmentId[] // оборудование на стеллаже склада
   rackDecor: DecorKind[] // декорации на складе
   shelvesInventory: string[] // купленные, но ещё не размещённые стойки
 }
