@@ -1,5 +1,6 @@
 import { FISH_SPECIES, SPECIES_BY_ID } from '../data/fish'
 import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from '../data/aquarium'
+import type { AquariumModel } from '../data/aquarium'
 import { EQUIPMENT, EQUIPMENT_IDS, EQUIPMENT_SLOTS_PER_RACK, SHELVES, shelfLoadLeft, shelfUsedLiters, storageCapacity, storageUsed } from '../data/shop'
 import { DECOR, DECOR_KINDS } from '../data/decor'
 import { ROOMS, ROOM_BY_ID } from '../data/rooms'
@@ -559,6 +560,52 @@ export function buildApp(actions: UIActions) {
       row.append(el('strong', '', `${model.name} (${model.w}×${model.d}×${model.h} см, ${model.volume} л)`), badge, qty, btn)
       body.append(row)
     }
+  }
+
+  function openBuyAquariumModal(s: GameState, model: AquariumModel): void {
+    const { body } = overlay(`Купить «${model.name}»`)
+    body.append(el('div', 'comp-hint', `${model.w}×${model.d}×${model.h} см, ${model.volume} л — ${model.price}₽/шт. Выберите стойку и количество.`))
+    const placeables: { shelf: ShelfState; max: number; qty: HTMLInputElement }[] = []
+    for (const shelf of s.shelves) {
+      const max = maxFitOnShelf(shelf, model)
+      if (max > 0) placeables.push({ shelf, max, qty: el('input') })
+    }
+    const totalEl = el('div', 'comp-hint')
+    const buyBtn = el('button', 'btn buy', 'Купить')
+    const pick = (): number => placeables.reduce((acc, p) => acc + Math.max(0, Math.min(p.max, Number(p.qty.value) || 0)), 0)
+    const recalc = (): void => {
+      const total = pick() * model.price
+      totalEl.textContent = `Итого: ${total}₽`
+      buyBtn.disabled = pick() <= 0 || s.money < total
+    }
+    if (placeables.length === 0) {
+      body.append(el('div', 'empty', 'Нет стоек со свободной подходящей полкой.'))
+      body.append(storeReason('Сначала купите и разместите стойку в «Помещениях»'))
+      return
+    }
+    for (const p of placeables) {
+      p.qty.type = 'number'
+      p.qty.value = '0'
+      p.qty.min = '0'
+      p.qty.max = String(p.max)
+      p.qty.style.width = '56px'
+      p.qty.addEventListener('input', () => {
+        p.qty.value = String(Math.max(0, Math.min(p.max, Number(p.qty.value) || 0)))
+        recalc()
+      })
+      const row = el('div', 'modal-row')
+      row.append(el('strong', '', `${ROOM_BY_ID[p.shelf.roomId].name} · ${p.shelf.name}`), el('span', 'shop-desc', `до ${p.max} шт`), p.qty)
+      body.append(row)
+    }
+    body.append(totalEl, buyBtn)
+    buyBtn.addEventListener('click', () => {
+      for (const p of placeables) {
+        const n = Math.max(0, Math.min(p.max, Number(p.qty.value) || 0))
+        if (n > 0) actions.onBuyAquarium(model.id, p.shelf.id, n)
+      }
+      recalc()
+    })
+    recalc()
   }
 
   function renderOrders(state: GameState): void {
@@ -1360,36 +1407,21 @@ export function buildApp(actions: UIActions) {
     }
 
     furnAq.innerHTML = ''
-    furnAq.append(el('div', 'comp-hint', 'Аквариумы ставятся на стойки: в зале — на продажу, в разводне — для себя. Выберите стойку со свободной подходящей полкой.'))
+    furnAq.append(el('div', 'comp-hint', 'Аквариумы ставятся на стойки: в зале — на продажу, в разводне — для себя. При покупке выберите стойку и количество.'))
     for (const model of AQUARIUM_MODELS) {
-      const eligible = state.shelves.filter((shelf) => {
-        if (model.volume > shelfLoadLeft(shelf)) return false
-        return shelf.slabs.some((slab) => !shelf.aquariums.some((a) => a.slabId === slab.id) && model.w <= slab.width && model.d <= slab.depth && model.h <= slab.height)
-      })
+      const canPlace = state.shelves.some((shelf) => maxFitOnShelf(shelf, model) > 0)
       const card = el('div', 'store-card')
       card.append(
         el('strong', 'store-name', model.name),
-        el('div', 'store-desc', `${model.w}×${model.d}×${model.h} см, ${model.volume} л`),
+        el('div', 'store-desc', `${model.w}×${model.d}×${model.h} см, ${model.volume} л — ${model.price}₽/шт`),
       )
-      if (eligible.length === 0) {
-        card.append(el('div', 'store-desc', 'Нет стоек со свободной подходящей полкой.'))
+      const btn = el('button', 'btn buy', 'Купить — ' + model.price + '₽/шт')
+      btn.disabled = !canPlace
+      btn.addEventListener('click', () => openBuyAquariumModal(state, model))
+      card.append(btn)
+      if (!canPlace) {
+        card.append(storeReason('Нет стоек со свободной подходящей полкой'))
         card.append(storeReason('Сначала купите и разместите стойку в «Помещениях»'))
-      } else {
-        const select = el('select')
-        for (const shelf of eligible) {
-          const opt = el('option', '', `${ROOM_BY_ID[shelf.roomId].name} · ${shelf.name}`)
-          opt.value = shelf.id
-          select.append(opt)
-        }
-        const row = el('div', 'store-buy-row')
-        row.append(select)
-        const btn = el('button', 'btn buy', `Купить — ${model.price}₽`)
-        const noMoney = state.money < model.price
-        btn.disabled = noMoney
-        btn.addEventListener('click', () => actions.onBuyAquarium(model.id, select.value, 1))
-        row.append(btn)
-        card.append(row)
-        if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${model.price}₽`))
       }
       furnAq.append(card)
     }
