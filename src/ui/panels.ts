@@ -1293,7 +1293,6 @@ export function buildApp(actions: UIActions) {
     const shop = state.shop
 
     furnShelves.innerHTML = ''
-    furnShelves.append(el('div', 'comp-hint', 'Стойки для аквариумов: покупаются на склад, затем размещаются на «Помещениях».'))
     for (const specId of Object.keys(SHELVES)) {
       const spec = SHELVES[specId as keyof typeof SHELVES]
       const card = el('div', 'store-card')
@@ -1375,7 +1374,6 @@ export function buildApp(actions: UIActions) {
     }
 
     furnAq.innerHTML = ''
-    furnAq.append(el('div', 'comp-hint', 'Аквариумы ставятся на стойки: в зале — на продажу, в разводне — для себя. При покупке выберите стойку и количество.'))
     for (const model of AQUARIUM_MODELS) {
       const canPlace = state.shelves.some((shelf) => maxFitOnShelf(shelf, model) > 0)
       const card = el('div', 'store-card')
