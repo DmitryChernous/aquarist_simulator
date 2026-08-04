@@ -200,7 +200,6 @@ export function buildApp(actions: UIActions) {
   const pauseBtn = app.querySelector<HTMLButtonElement>('.btn-pause')!
   const speedBtns = Array.from(app.querySelectorAll<HTMLButtonElement>('.btn-speed'))
 
-  const hallList = app.querySelector<HTMLDivElement>('.hall-list')!
   const hallActions = app.querySelector<HTMLDivElement>('.hall-actions')!
   const roomSwitch = app.querySelector<HTMLDivElement>('.room-switch')!
   const ordersPanel = app.querySelector<HTMLDivElement>('.orders-panel')!
@@ -316,77 +315,53 @@ export function buildApp(actions: UIActions) {
     placeShelf.addEventListener('click', () => openPlaceShelfModal(state))
     hallActions.append(placeShelf)
 
-    const roomShelves = state.shelves.filter((s) => s.roomId === state.viewRoom)
-    hallList.innerHTML = ''
-    if (roomShelves.length === 0) {
-      const empty = el('div', 'empty hall-empty')
-      const go = el('button', 'btn small', 'Купить стойку')
-      go.addEventListener('click', () => openAddShelfModal(state))
-      empty.append(
-        el('span', '', `В помещении «${ROOM_BY_ID[state.viewRoom].name}» нет стоек. Купите стойку, затем разместите её и добавьте аквариум на полку.`),
-        go,
-      )
-      hallList.append(empty)
+    const manage = el('button', 'btn', 'Управление стойками')
+    manage.addEventListener('click', () => openShelvesModal(state))
+    hallActions.append(manage)
+
+    storageBlock.style.display = state.viewRoom === 'storage' ? '' : 'none'
+    if (state.viewRoom === 'storage') renderStorage(state)
+  }
+
+  function openShelvesModal(s: GameState): void {
+    const { body } = overlay('Управление стойками')
+    body.append(el('div', 'comp-hint', 'Канвас выше — основное представление зала. Здесь — сводка по стойкам и быстрые действия.'))
+    if (s.shelves.length === 0) {
+      body.append(el('div', 'empty', 'Стоек нет. Купите стойку и разместите её в помещении.'))
+      return
     }
-    for (const shelf of roomShelves) {
-      if (shelf.aquariums.length === 0) {
-        const empty = el('div', 'comp-hint', `«${shelf.name}» пуст. Добавьте аквариум на полку ниже.`)
-        hallList.append(empty)
-      }
-      const card = el('div', 'shelf-card')
+    for (const shelf of s.shelves) {
+      const card = el('div', 'shelf-card compact')
       const head = el('div', 'shelf-head')
       const roomBadge = el('span', 'room-badge', `${ROOM_BY_ID[shelf.roomId].icon} ${ROOM_BY_ID[shelf.roomId].name}`)
       head.append(
         el('strong', '', shelf.name),
         roomBadge,
-        el('span', 'shelf-meta', `занято ${shelf.aquariums.length}/${shelf.slabs.length} · загрузка ${shelfUsedLiters(shelf)}/${shelf.loadCapacityL} л`),
+        el('span', 'shelf-meta', `аквариумов ${shelf.aquariums.length} · загрузка ${shelfUsedLiters(shelf)}/${shelf.loadCapacityL} л`),
       )
-      const menuBtn = el('button', 'btn small', 'Действия')
-      menuBtn.addEventListener('click', (e) => {
-        e.stopPropagation()
-        openShelfMenu(shelf.id, state)
-      })
-      head.classList.add('clickable')
-      head.addEventListener('click', () => openShelfMenu(shelf.id, state))
-      head.append(menuBtn)
+      const actionsBtn = el('button', 'btn small', 'Действия')
+      actionsBtn.addEventListener('click', () => openShelfMenu(shelf.id, s))
+      head.append(actionsBtn)
       card.append(head)
-      const body = el('div', 'shelf-body')
-      for (const slab of shelf.slabs) {
-        const cell = el('div', 'shelf-cell')
-        const aqs = shelf.aquariums.filter((a) => a.slabId === slab.id)
-        cell.append(el('span', 'slab-tag', `Полка ${slab.width}×${slab.depth} см, выс. ${slab.height} см`))
-        if (aqs.length > 0) {
-          for (const aq of aqs) {
-            const tile = el('button', 'btn aq-tile')
-            tile.style.background = 'linear-gradient(180deg,#0e3357,#07203a)'
-            tile.append(
-              el('strong', '', aq.name),
-              el('span', 'aq-meta', `${aq.volume} л · ${aq.fish.length} рыб · привл. ${tankAttractiveness(aq)}`),
-            )
-            tile.addEventListener('click', () => {
-              actions.onSelectAquarium(aq.id)
-              switchTab(app, 'aquarium')
-            })
-            const move = el('button', 'btn small', '↔')
-            move.title = 'Переместить на другую стойку'
-            move.addEventListener('click', (e) => {
-              e.stopPropagation()
-              openAquariumMoveModal(state, aq.id)
-            })
-            cell.append(tile, move)
-          }
+      if (shelf.aquariums.length > 0) {
+        const list = el('div', 'shelf-body')
+        for (const aq of shelf.aquariums) {
+          const tile = el('button', 'btn aq-tile small')
+          tile.title = `Открыть «${aq.name}»`
+          tile.append(
+            el('strong', '', aq.name),
+            el('span', 'aq-meta', `${aq.volume} л · ${aq.fish.length} рыб`),
+          )
+          tile.addEventListener('click', () => {
+            actions.onSelectAquarium(aq.id)
+            switchTab(app, 'aquarium')
+          })
+          list.append(tile)
         }
-        const add = el('button', 'btn small', 'Добавить аквариум')
-        add.addEventListener('click', () => openAddAquariumModal(state, shelf))
-        cell.append(add)
-        body.append(cell)
+        card.append(list)
       }
-      card.append(body)
-      hallList.append(card)
+      body.append(card)
     }
-
-    storageBlock.style.display = state.viewRoom === 'storage' ? '' : 'none'
-    if (state.viewRoom === 'storage') renderStorage(state)
   }
 
   function openAddShelfModal(s: GameState): void {
@@ -457,6 +432,10 @@ export function buildApp(actions: UIActions) {
     const move = el('button', 'btn', 'Переместить в другое помещение…')
     move.addEventListener('click', () => openShelfMoveModal(shelf))
     body.append(move)
+
+    const add = el('button', 'btn', 'Добавить аквариум…')
+    add.addEventListener('click', () => openAddAquariumModal(s, shelf))
+    body.append(add)
 
     const specPrice = spec ? spec.price : 0
     const sell = el('button', 'btn danger', `Продать — ${Math.floor(specPrice * 0.5)}₽`)
@@ -1506,7 +1485,6 @@ function buildLayout(): HTMLElement {
     buildHallCanvas(),
     el('h2', 'sec-title', 'Управление стойками'),
     el('div', 'hall-actions'),
-    el('div', 'hall-list'),
   )
 
   const storageBlock = el('div', 'storage-block')
