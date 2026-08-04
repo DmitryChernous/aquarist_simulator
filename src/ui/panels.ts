@@ -623,7 +623,11 @@ export function buildApp(actions: UIActions) {
 
   function renderAquarium(state: GameState): void {
     const all = allAquariums(state)
-    fillSelect(aquariumSelect, all.map((a) => ({ value: a.id, label: a.name })), state.selectedAquariumId)
+    fillSelect(aquariumSelect, all.map((a) => {
+      const sh = shelfOfAquarium(state, a)
+      const label = sh ? `${ROOM_BY_ID[sh.roomId].icon} ${ROOM_BY_ID[sh.roomId].name} · ${sh.name} · ${a.name}` : a.name
+      return { value: a.id, label }
+    }), state.selectedAquariumId)
     const aq = all.find((a) => a.id === state.selectedAquariumId)
     if (!aq) {
       aquariumAtt.textContent = 'Аквариум не выбран'
