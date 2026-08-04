@@ -95,7 +95,7 @@ function allAquariums(state: GameState): AquariumState[] {
 }
 
 function fillSelect(select: HTMLSelectElement, options: { value: string; label: string }[], current: string | null): void {
-  const prev = select.value || current || options[0]?.value || ''
+  const prev = select.dataset.prevValue ?? (select.value || current || options[0]?.value || '')
   select.innerHTML = ''
   for (const opt of options) {
     const o = el('option')
@@ -105,6 +105,7 @@ function fillSelect(select: HTMLSelectElement, options: { value: string; label: 
   }
   if (options.some((o) => o.value === prev)) select.value = prev
   else if (options.length) select.value = options[0].value
+  select.dataset.prevValue = select.value
 }
 
 function statusOf(score: number): 'ok' | 'warn' | 'bad' {
