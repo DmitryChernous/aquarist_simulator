@@ -155,16 +155,19 @@ export function layoutHall(state: GameState): { shelves: ShelfRect[] } {
     const slabH = b.h / Math.max(1, shelf.slabs.length)
     let cy = b.y
     for (const slab of shelf.slabs) {
-      const aq = shelf.aquariums.find((a) => a.slabId === slab.id)
-      if (aq) {
-        const aqH = Math.max(26, slabH - 16)
+      const scl = b.w / slab.width // px на см на этой полке
+      const aqs = shelf.aquariums.filter((a) => a.slabId === slab.id)
+      for (const aq of aqs) {
+        const aqW = aq.w * scl
+        const aqX = b.x + (aq.x ?? 0) * scl
+        const aqH = Math.max(24, (aq.h / slab.height) * (slabH - 8))
         tanks.push({
           shelfId: shelf.id,
           slabId: slab.id,
           aqId: aq.id,
-          x: b.x + 8,
-          y: cy - aqH - 4,
-          w: b.w - 16,
+          x: aqX,
+          y: cy - aqH,
+          w: aqW,
           h: aqH,
         })
       }

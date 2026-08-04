@@ -1,13 +1,13 @@
 import { FISH_SPECIES, SPECIES_BY_ID } from '../data/fish'
 import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from '../data/aquarium'
-import { EQUIPMENT, EQUIPMENT_IDS, EQUIPMENT_SLOTS_PER_RACK, SHELVES, fitsOnSlab, shelfLoadLeft, shelfUsedLiters, storageCapacity, storageUsed } from '../data/shop'
+import { EQUIPMENT, EQUIPMENT_IDS, EQUIPMENT_SLOTS_PER_RACK, SHELVES, shelfLoadLeft, shelfUsedLiters, storageCapacity, storageUsed } from '../data/shop'
 import { DECOR, DECOR_KINDS } from '../data/decor'
 import { ROOMS, ROOM_BY_ID } from '../data/rooms'
 import { FURNITURE, FURNITURE_IDS, displayCapacity, furnitureCount } from '../data/furniture'
 import { HALL_HEIGHT, HALL_WIDTH } from './renderHall'
 import { tankAttractiveness } from '../sim/buyers'
 import { availableStock, buyPrice, decorStock, equipmentStock, retailPrice, stockTotal, wholesalePrice } from '../sim/economy'
-import { canStock, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
+import { canStock, maxFitOnShelf, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
 import { fishWellbeing } from '../sim/wellbeing'
 import { VERSION } from '../version'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
@@ -18,14 +18,14 @@ export interface UIActions {
   onBuyShelf(specId: string): void
   onPlaceShelf(specId: string, roomId: RoomId): void
   onMoveShelf(shelfId: string, roomId: RoomId): void
-  onMoveAquarium(aqId: string, targetShelfId: string, targetSlabId: string): void
+  onMoveAquarium(aqId: string, targetShelfId: string): void
   onViewRoom(roomId: RoomId): void
   onSellShelf(shelfId: string): void
   onSellInventoryShelf(specId: string): void
   onAddStorage(): void
   onBuyShopItem(kind: 'cashRegister' | 'componentRack'): void
   onBuyFurniture(id: FurnitureId): void
-  onAddAquarium(shelfId: string, modelId: string): void
+  onBuyAquarium(modelId: string, shelfId: string, qty: number): void
   onRemoveAquarium(shelfId: string, aqId: string): void
   onSelectAquarium(aqId: string): void
   onSelectStorage(storageId: string): void
@@ -360,31 +360,32 @@ export function buildApp(actions: UIActions) {
       const body = el('div', 'shelf-body')
       for (const slab of shelf.slabs) {
         const cell = el('div', 'shelf-cell')
-        const aq = shelf.aquariums.find((a) => a.slabId === slab.id)
+        const aqs = shelf.aquariums.filter((a) => a.slabId === slab.id)
         cell.append(el('span', 'slab-tag', `Полка ${slab.width}×${slab.depth} см, выс. ${slab.height} см`))
-        if (aq) {
-          const tile = el('button', 'btn aq-tile')
-          tile.style.background = 'linear-gradient(180deg,#0e3357,#07203a)'
-          tile.append(
-            el('strong', '', aq.name),
-            el('span', 'aq-meta', `${aq.volume} л · ${aq.fish.length} рыб · привл. ${tankAttractiveness(aq)}`),
-          )
-          tile.addEventListener('click', () => {
-            actions.onSelectAquarium(aq.id)
-            switchTab(app, 'aquarium')
-          })
-          const move = el('button', 'btn small', '↔')
-          move.title = 'Переместить на другую стойку'
-          move.addEventListener('click', (e) => {
-            e.stopPropagation()
-            openAquariumMoveModal(state, aq.id)
-          })
-          cell.append(tile, move)
-        } else {
-          const add = el('button', 'btn small', 'Добавить аквариум')
-          add.addEventListener('click', () => openAddAquariumModal(state, shelf, slab.id))
-          cell.append(add)
+        if (aqs.length > 0) {
+          for (const aq of aqs) {
+            const tile = el('button', 'btn aq-tile')
+            tile.style.background = 'linear-gradient(180deg,#0e3357,#07203a)'
+            tile.append(
+              el('strong', '', aq.name),
+              el('span', 'aq-meta', `${aq.volume} л · ${aq.fish.length} рыб · привл. ${tankAttractiveness(aq)}`),
+            )
+            tile.addEventListener('click', () => {
+              actions.onSelectAquarium(aq.id)
+              switchTab(app, 'aquarium')
+            })
+            const move = el('button', 'btn small', '↔')
+            move.title = 'Переместить на другую стойку'
+            move.addEventListener('click', (e) => {
+              e.stopPropagation()
+              openAquariumMoveModal(state, aq.id)
+            })
+            cell.append(tile, move)
+          }
         }
+        const add = el('button', 'btn small', 'Добавить аквариум')
+        add.addEventListener('click', () => openAddAquariumModal(state, shelf))
+        cell.append(add)
         body.append(cell)
       }
       card.append(body)
@@ -511,49 +512,51 @@ export function buildApp(actions: UIActions) {
     const src = s.shelves.find((sh) => sh.id === aq.shelfId)
     const { body } = overlay(`Переместить «${aq.name}»`)
     body.append(
-      el('div', 'comp-hint', `Сейчас: ${src ? ROOM_BY_ID[src.roomId].icon + ' ' + ROOM_BY_ID[src.roomId].name + ' · ' + src.name : '—'}. Выберите свободную полку:`),
+      el('div', 'comp-hint', `Сейчас: ${src ? ROOM_BY_ID[src.roomId].icon + ' ' + ROOM_BY_ID[src.roomId].name + ' · ' + src.name : '—'}. Выберите стойку назначения со свободным местом:`),
     )
-    const targets: { shelf: ShelfState; slab: import('../types').ShelfSlab }[] = []
-    for (const shelf of s.shelves) {
-      for (const slab of shelf.slabs) {
-        if (shelf.id === src?.id && slab.id === aq.slabId) continue
-        if (shelf.aquariums.some((a) => a.slabId === slab.id)) continue
-        if (!fitsOnSlab(aq, slab)) continue
-        if (aq.volume > shelfLoadLeft(shelf)) continue
-        targets.push({ shelf, slab })
-      }
-    }
-    if (targets.length === 0) {
-      body.append(el('div', 'empty', 'Нет свободных подходящих полок. Купите новую стойку или освободите полку.'))
+    const targetShelves = s.shelves.filter((sh) => sh.id !== src?.id && maxFitOnShelf(sh, aq) > 0)
+    if (targetShelves.length === 0) {
+      body.append(el('div', 'empty', 'Нет стоек со свободным местом. Купите новую стойку или освободите место.'))
       return
     }
-    for (const t of targets) {
+    for (const t of targetShelves) {
       const row = el('div', 'modal-row')
       const btn = el('button', 'btn small', 'Перенести')
-      btn.addEventListener('click', () => actions.onMoveAquarium(aq.id, t.shelf.id, t.slab.id))
+      btn.addEventListener('click', () => actions.onMoveAquarium(aq.id, t.id))
       row.append(
-        el('strong', '', `${ROOM_BY_ID[t.shelf.roomId].name} · ${t.shelf.name}`),
-        el('span', 'shop-desc', `${t.slab.width}×${t.slab.depth}×${t.slab.height} см`),
+        el('strong', '', `${ROOM_BY_ID[t.roomId].name} · ${t.name}`),
+        el('span', 'shop-desc', `${maxFitOnShelf(t, aq)} мест(а) · заглаз ${t.aquariums.length}/${t.slabs.length} полок`),
         btn,
       )
       body.append(row)
     }
   }
 
-  function openAddAquariumModal(s: GameState, shelf: ShelfState, slabId: string): void {
-    const { body } = overlay('Добавить аквариум: на полку стойки «' + shelf.name + '»')
-    const slab = shelf.slabs.find((sl) => sl.id === slabId)
+  function openAddAquariumModal(s: GameState, shelf: ShelfState): void {
+    const { body } = overlay('Добавить аквариум на стойку «' + shelf.name + '»')
     body.append(el('div', 'comp-hint', `Остаток грузоподъёмности: ${shelfLoadLeft(shelf)} л`))
     for (const model of AQUARIUM_MODELS) {
-      const fits = slab ? model.w <= slab.width && model.d <= slab.depth && model.h <= slab.height : false
-      const fitsLoad = model.volume <= shelfLoadLeft(shelf)
-      const yes = fits && fitsLoad
+      const max = maxFitOnShelf(shelf, model)
       const row = el('div', 'modal-row')
-      const badge = el('span', yes ? 'compat ok' : 'compat dead', yes ? 'помещается' : !fits ? 'не по габаритам' : 'превышает грузоподъёмность')
-      const btn = el('button', 'btn small', `Купить ${model.name} — ${model.price}₽`)
-      btn.disabled = s.money < model.price || !yes
-      if (yes) btn.addEventListener('click', () => actions.onAddAquarium(shelf.id, model.id))
-      row.append(el('strong', '', `${model.name} (${model.w}×${model.d}×${model.h} см, ${model.volume} л)`), badge, btn)
+      const badge = el('span', max > 0 ? 'compat ok' : 'compat dead', max > 0 ? `помещается до ${max} шт` : 'не помещается')
+      const qty = el('input')
+      qty.type = 'number'
+      qty.value = String(Math.min(1, max))
+      qty.min = '1'
+      qty.max = String(max)
+      qty.style.width = '56px'
+      const btn = el('button', 'btn small', `Купить — ${model.price}₽/шт`)
+      const update = (): void => {
+        const n = Math.max(0, Math.min(max, Number(qty.value) || 0))
+        btn.disabled = s.money < model.price * n || n <= 0
+      }
+      qty.addEventListener('input', update)
+      update()
+      btn.addEventListener('click', () => {
+        const n = Math.max(0, Math.min(max, Number(qty.value) || 0))
+        if (n > 0) actions.onBuyAquarium(model.id, shelf.id, n)
+      })
+      row.append(el('strong', '', `${model.name} (${model.w}×${model.d}×${model.h} см, ${model.volume} л)`), badge, qty, btn)
       body.append(row)
     }
   }
@@ -1383,7 +1386,7 @@ export function buildApp(actions: UIActions) {
         const btn = el('button', 'btn buy', `Купить — ${model.price}₽`)
         const noMoney = state.money < model.price
         btn.disabled = noMoney
-        btn.addEventListener('click', () => actions.onAddAquarium(select.value, model.id))
+        btn.addEventListener('click', () => actions.onBuyAquarium(model.id, select.value, 1))
         row.append(btn)
         card.append(row)
         if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${model.price}₽`))

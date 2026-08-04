@@ -49,6 +49,7 @@ export function defaultState(): GameState {
     name: 'Аквариум 1',
     shelfId: 'sh1',
     slabId: 'slab0',
+    x: 0,
     w: 60,
     d: 35,
     h: 40,
@@ -129,6 +130,7 @@ function migrateDisplayTanks(tanks: any[]): AquariumState[] {
     name: String(t.name || `Аквариум ${i + 1}`),
     shelfId: 'sh1',
     slabId: i % 2 === 0 ? 'slab0' : 'slab1',
+    x: 0,
     w: model.w,
     d: model.d,
     h: model.h,
@@ -161,6 +163,10 @@ export function loadState(): GameState {
         id: s.id ?? `sh-restored-${i}`,
         specId: (s as any).specId ?? 'compact',
         roomId: ((s as any).roomId ?? 'hall') as RoomId,
+        aquariums: (Array.isArray((s as any).aquariums) ? (s as any).aquariums : []).map((a: any) => ({
+          ...a,
+          x: typeof a.x === 'number' ? a.x : 0,
+        })),
       }))
       return {
         ...base,

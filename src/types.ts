@@ -116,6 +116,7 @@ export interface AquariumState {
   name: string
   shelfId: string | null
   slabId: string | null
+  x: number // горизонтальная позиция (см) от левого края полки
   w: number
   d: number
   h: number

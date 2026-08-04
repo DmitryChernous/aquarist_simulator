@@ -1,5 +1,6 @@
 import type { AquariumState, FishSpecies, GameState, RoomId, ShelfState, TankState } from '../types'
 import { SPECIES_BY_ID } from '../data/fish'
+import { shelfLoadLeft } from '../data/shop'
 
 // Комнатная температура: без нагревателя вода стремится к ней.
 export const ROOM_TEMP = 24
@@ -24,6 +25,53 @@ export function shelfOfAquarium(state: GameState, aq: AquariumState): ShelfState
 
 export function allStorage(state: GameState): TankState[] {
   return state.storage
+}
+
+// --- Размещение аквариумов на стойке ---
+// Каждая полка (slab) может вмещать несколько аквариумов в ряд по ширине.
+// Аквариум лежит от позиции x (см) слева по ширине aq.w.
+
+export interface TankPlacement {
+  slabId: string
+  x: number
+}
+
+// Возвращает до `cap` размещений модели в стойку (по полкам по порядку slot),
+// учитывая ширину/глубину/высоту полки, уже стоящие аквариумы и грузоподъёмность.
+export function fitAquariums(shelf: ShelfState, model: { w: number; d: number; h: number; volume: number }, cap: number): TankPlacement[] {
+  const out: TankPlacement[] = []
+  if (cap <= 0) return out
+  let remaining = shelfLoadLeft(shelf)
+  for (const slab of shelf.slabs) {
+    if (model.d > slab.depth || model.h > slab.height) continue
+    const occ = shelf.aquariums
+      .filter((a) => a.slabId === slab.id)
+      .map((a) => ({ x: a.x ?? 0, w: a.w }))
+      .sort((a, b) => a.x - b.x)
+    let pos = 0
+    let i = 0
+    while (out.length < cap && remaining >= model.volume) {
+      while (i < occ.length && occ[i].x + occ[i].w <= pos) i++
+      const occStart = i < occ.length ? occ[i].x : slab.width
+      if (pos + model.w > occStart) {
+        if (i < occ.length) {
+          pos = occ[i].x + occ[i].w
+          continue
+        }
+        break
+      }
+      if (pos + model.w > slab.width) break
+      out.push({ slabId: slab.id, x: pos })
+      remaining -= model.volume
+      pos += model.w
+    }
+    if (out.length >= cap || remaining < model.volume) break
+  }
+  return out
+}
+
+export function maxFitOnShelf(shelf: ShelfState, model: { w: number; d: number; h: number; volume: number }): number {
+  return fitAquariums(shelf, model, 5000).length
 }
 
 export function clamp(v: number, min: number, max: number): number {
