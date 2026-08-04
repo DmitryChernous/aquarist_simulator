@@ -566,13 +566,6 @@ body {
   padding: 8px 18px;
   font-size: 14px;
 }
-.store-group .tank-bar {
-  margin-bottom: 8px;
-}
-.store-bar-hint {
-  font-size: 13px;
-  color: #9fb6cd;
-}
 
 .seg-btn {
   background: var(--panel);
@@ -1124,9 +1117,6 @@ body {
 #tab-display {
   flex-direction: row;
   flex-wrap: wrap;
-}
-#tab-display > .tank-bar {
-  flex: 1 1 100%;
 }
 
 .orders-panel {

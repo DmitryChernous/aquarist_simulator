@@ -1554,8 +1554,6 @@ function buildLayout(): HTMLElement {
 
   const furnGroup = el('div', 'store-group')
   furnGroup.dataset.group = 'furn'
-  const furnBar = el('div', 'tank-bar')
-  furnBar.append(el('span', 'store-bar-hint', 'Обустройство магазина: стойки, оснащение и мебель'))
   const furnTabs = el('div', 'store-tabs')
   furnTabs.append(
     segBtn('shelves', 'Стойки'),
@@ -1567,7 +1565,7 @@ function buildLayout(): HTMLElement {
   const furnEquip = el('div', 'decor-store furn-equip')
   const furnFurn = el('div', 'decor-store furn-furn')
   const furnAq = el('div', 'decor-store furn-aq')
-  furnGroup.append(furnBar, furnTabs, furnShelves, furnEquip, furnFurn, furnAq)
+  furnGroup.append(furnTabs, furnShelves, furnEquip, furnFurn, furnAq)
 
   storeTab.append(storeMode, saleGroup, furnGroup)
 
