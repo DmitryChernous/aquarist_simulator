@@ -605,6 +605,17 @@ body {
   padding: 4px 8px;
 }
 
+.store-buy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.store-buy-row select {
+  flex: 1;
+  min-width: 0;
+}
+
 .rack-head {
   display: flex;
   align-items: center;

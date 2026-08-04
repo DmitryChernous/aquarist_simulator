@@ -227,6 +227,7 @@ export function buildApp(actions: UIActions) {
   const furnShelves = app.querySelector<HTMLDivElement>('.furn-shelves')!
   const furnEquip = app.querySelector<HTMLDivElement>('.furn-equip')!
   const furnFurn = app.querySelector<HTMLDivElement>('.furn-furn')!
+  const furnAq = app.querySelector<HTMLDivElement>('.furn-aq')!
   const furnTabs = Array.from(app.querySelectorAll<HTMLButtonElement>('[data-group="furn"] .seg-btn'))
   const modeButtons = Array.from(app.querySelectorAll<HTMLButtonElement>('.store-mode .seg-btn'))
   const logList = app.querySelector<HTMLUListElement>('.log-list')!
@@ -248,13 +249,14 @@ export function buildApp(actions: UIActions) {
   for (const b of storeTabs) b.addEventListener('click', () => setStoreSection((b.dataset.store as 'fish' | 'decor' | 'equip') ?? 'fish'))
   setStoreSection('fish')
 
-  function setFurnSection(v: 'shelves' | 'equip' | 'furn'): void {
+  function setFurnSection(v: 'shelves' | 'equip' | 'furn' | 'aquariums'): void {
     for (const b of furnTabs) b.classList.toggle('active', b.dataset.store === v)
     furnShelves.style.display = v === 'shelves' ? '' : 'none'
     furnEquip.style.display = v === 'equip' ? '' : 'none'
     furnFurn.style.display = v === 'furn' ? '' : 'none'
+    furnAq.style.display = v === 'aquariums' ? '' : 'none'
   }
-  for (const b of furnTabs) b.addEventListener('click', () => setFurnSection((b.dataset.store as 'shelves' | 'equip' | 'furn') ?? 'shelves'))
+  for (const b of furnTabs) b.addEventListener('click', () => setFurnSection((b.dataset.store as 'shelves' | 'equip' | 'furn' | 'aquariums') ?? 'shelves'))
   setFurnSection('shelves')
 
   function setStoreMode(mode: 'sale' | 'furn'): void {
@@ -1353,6 +1355,41 @@ export function buildApp(actions: UIActions) {
       if (noMoneyF) card.append(storeReason(`Не хватает денег: нужно ${def.price}₽`))
       furnFurn.append(card)
     }
+
+    furnAq.innerHTML = ''
+    furnAq.append(el('div', 'comp-hint', 'Аквариумы ставятся на стойки: в зале — на продажу, в разводне — для себя. Выберите стойку со свободной подходящей полкой.'))
+    for (const model of AQUARIUM_MODELS) {
+      const eligible = state.shelves.filter((shelf) => {
+        if (model.volume > shelfLoadLeft(shelf)) return false
+        return shelf.slabs.some((slab) => !shelf.aquariums.some((a) => a.slabId === slab.id) && model.w <= slab.width && model.d <= slab.depth && model.h <= slab.height)
+      })
+      const card = el('div', 'store-card')
+      card.append(
+        el('strong', 'store-name', model.name),
+        el('div', 'store-desc', `${model.w}×${model.d}×${model.h} см, ${model.volume} л`),
+      )
+      if (eligible.length === 0) {
+        card.append(el('div', 'store-desc', 'Нет стоек со свободной подходящей полкой.'))
+        card.append(storeReason('Сначала купите и разместите стойку в «Помещениях»'))
+      } else {
+        const select = el('select')
+        for (const shelf of eligible) {
+          const opt = el('option', '', `${ROOM_BY_ID[shelf.roomId].name} · ${shelf.name}`)
+          opt.value = shelf.id
+          select.append(opt)
+        }
+        const row = el('div', 'store-buy-row')
+        row.append(select)
+        const btn = el('button', 'btn buy', `Купить — ${model.price}₽`)
+        const noMoney = state.money < model.price
+        btn.disabled = noMoney
+        btn.addEventListener('click', () => actions.onAddAquarium(select.value, model.id))
+        row.append(btn)
+        card.append(row)
+        if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${model.price}₽`))
+      }
+      furnAq.append(card)
+    }
   }
 
   function renderLog(state: GameState): void {
@@ -1543,11 +1580,13 @@ function buildLayout(): HTMLElement {
     segBtn('shelves', 'Стойки'),
     segBtn('equip', 'Оснащение'),
     segBtn('furn', 'Мебель'),
+    segBtn('aquariums', 'Аквариумы'),
   )
   const furnShelves = el('div', 'store-grid furn-shelves')
   const furnEquip = el('div', 'decor-store furn-equip')
   const furnFurn = el('div', 'decor-store furn-furn')
-  furnGroup.append(furnBar, furnTabs, furnShelves, furnEquip, furnFurn)
+  const furnAq = el('div', 'decor-store furn-aq')
+  furnGroup.append(furnBar, furnTabs, furnShelves, furnEquip, furnFurn, furnAq)
 
   storeTab.append(storeMode, saleGroup, furnGroup)
 
