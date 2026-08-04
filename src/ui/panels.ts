@@ -6,7 +6,7 @@ import { DECOR, DECOR_KINDS } from '../data/decor'
 import { ROOMS, ROOM_BY_ID } from '../data/rooms'
 import { FURNITURE, FURNITURE_IDS, furnitureCount } from '../data/furniture'
 import { HALL_HEIGHT, HALL_WIDTH } from './renderHall'
-import { tankAttractiveness } from '../sim/buyers'
+import { shopAttractiveness, tankAttractiveness } from '../sim/buyers'
 import { availableStock, buyPrice, decorStock, equipmentStock, retailPrice, wholesalePrice } from '../sim/economy'
 import { canStock, maxFitOnShelf, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
 import { fishWellbeing } from '../sim/wellbeing'
@@ -195,7 +195,7 @@ export function buildApp(actions: UIActions) {
   const roomSwitch = app.querySelector<HTMLDivElement>('.room-switch')!
   const ordersPanel = app.querySelector<HTMLDivElement>('.orders-panel')!
 
-  const storagePanel = app.querySelector<HTMLDivElement>('#storagePanel')!
+  const roomAside = app.querySelector<HTMLDivElement>('.room-aside')!
 
   const aquariumSelect = app.querySelector<HTMLSelectElement>('#aquariumSelect')!
   const aquariumAtt = app.querySelector<HTMLSpanElement>('#aquariumAtt')!
@@ -337,7 +337,7 @@ export function buildApp(actions: UIActions) {
   }
 
   function fpZal(state: GameState): string {
-    let s = `${state.viewRoom}|racks:${state.racks.map((r) => r.id + ':' + r.roomId).join(',')}|shelves:${state.shelves.map((sh) => sh.id + ':' + sh.aquariums.length).join(',')}|money:${state.money >= STORAGE_TANK_PRICE ? 1 : 0}|racksFull:${state.racks.length * STORAGE_RACK_CAPACITY >= STORAGE_MAX_SLOTS ? 1 : 0}|filter:${storageFilter}`
+    let s = `${state.viewRoom}|shelves:${state.shelves.map((sh) => `${sh.id}:${sh.roomId}:${sh.aquariums.length}:${sh.aquariums.reduce((a, q) => a + q.fish.length, 0)}`).join(',')}|racks:${state.racks.length}|money:${state.money >= STORAGE_TANK_PRICE ? 1 : 0}|racksFull:${state.racks.length * STORAGE_RACK_CAPACITY >= STORAGE_MAX_SLOTS ? 1 : 0}|filter:${storageFilter}|furn:${state.shop.furniture.displayRack ?? 0}:${(state.shop.furniture.coffeeTable ?? 0) + (state.shop.furniture.armchair ?? 0) + (state.shop.furniture.sofa ?? 0)}|sales:${state.sales}|vis:${state.totalVisitors}|att:${Math.round(shopAttractiveness(state))}`
     if (state.viewRoom === 'storage') {
       s += `|u:${storageUsed(state.shop)}/${storageCapacity(state.racks.length)}|f:${state.storage.stock.map((i) => i.speciesId + ':' + i.count).join(',')}|e:${state.shop.rackInventory.join(',')}|d:${state.shop.rackDecor.join(',')}`
     }
@@ -411,8 +411,7 @@ export function buildApp(actions: UIActions) {
     manage.addEventListener('click', () => openShelvesModal(state))
     hallActions.append(manage)
 
-    storagePanel.style.display = state.viewRoom === 'storage' ? '' : 'none'
-    if (state.viewRoom === 'storage') renderStoragePanel(state)
+    renderRoomAside(state)
   }
 
   function openShelvesModal(s: GameState): void {
@@ -1016,10 +1015,55 @@ export function buildApp(actions: UIActions) {
 
   let storageFilter = 'all'
 
-  function renderStoragePanel(state: GameState): void {
-    storagePanel.innerHTML = ''
-    storagePanel.append(el('h2', 'sec-title', 'Склад'))
+  function renderRoomAside(state: GameState): void {
+    roomAside.innerHTML = ''
+    const room = ROOM_BY_ID[state.viewRoom]
+    roomAside.append(el('h2', 'sec-title', `${room.icon} ${room.name}`))
+    roomAside.append(el('div', 'store-desc', room.desc))
+    if (state.viewRoom === 'storage') renderStorageAside(state)
+    else if (state.viewRoom === 'hall') renderHallAside(state)
+    else renderBreedingAside(state)
+  }
 
+  function renderHallAside(state: GameState): void {
+    const shelves = state.shelves
+    const aquariums = shelves.reduce((a, s) => a + s.aquariums.length, 0)
+    const fish = shelves.reduce((a, s) => a + s.aquariums.reduce((b, q) => b + q.fish.length, 0), 0)
+    const furn = state.shop.furniture
+    const lines: [string, string][] = [
+      ['Стоек', String(shelves.length)],
+      ['Аквариумов', String(aquariums)],
+      ['Рыб', String(fish)],
+      ['Привлекательность', `${shopAttractiveness(state)}/100`],
+      ['Витрин', String(furn.displayRack ?? 0)],
+      ['Мебели', String((furn.coffeeTable ?? 0) + (furn.armchair ?? 0) + (furn.sofa ?? 0))],
+      ['Продаж', String(state.sales)],
+      ['Посетителей', String(state.totalVisitors)],
+    ]
+    const grid = el('div', 'aside-stats')
+    for (const [k, v] of lines) {
+      const row = el('div', 'aside-stat')
+      row.append(el('span', 'aside-stat-k', k), el('span', 'aside-stat-v', v))
+      grid.append(row)
+    }
+    roomAside.append(grid)
+  }
+
+  function renderBreedingAside(state: GameState): void {
+    const here = state.shelves.filter((s) => s.roomId === 'breeding')
+    const aquariums = here.reduce((a, s) => a + s.aquariums.length, 0)
+    const fish = here.reduce((a, s) => a + s.aquariums.reduce((b, q) => b + q.fish.length, 0), 0)
+    const grid = el('div', 'aside-stats')
+    for (const [k, v] of [['Стоек', String(here.length)], ['Аквариумов', String(aquariums)], ['Рыб', String(fish)]] as const) {
+      const row = el('div', 'aside-stat')
+      row.append(el('span', 'aside-stat-k', k), el('span', 'aside-stat-v', v))
+      grid.append(row)
+    }
+    roomAside.append(grid)
+    roomAside.append(el('div', 'empty', 'Раздел «Разводня» в разработке.'))
+  }
+
+  function renderStorageAside(state: GameState): void {
     const cap = storageCapacity(state.racks.length)
     const used = storageUsed(state.shop)
     const summary = el('div', 'storage-summary')
@@ -1030,15 +1074,15 @@ export function buildApp(actions: UIActions) {
     bar.append(fill)
     summary.append(bar)
     summary.append(el('span', 'storage-count', `Занято ${used} · свободно ${Math.max(0, cap - used)}`))
-    storagePanel.append(summary)
+    roomAside.append(summary)
 
     const tabs = el('div', 'store-tabs')
     for (const [key, label] of [['all', 'Все'], ['fish', 'Рыбы'], ['equip', 'Оборудование'], ['decor', 'Декор']] as const) {
       const b = el('button', key === storageFilter ? 'seg-btn active' : 'seg-btn', label)
-      b.addEventListener('click', () => { storageFilter = key; renderStoragePanel(state) })
+      b.addEventListener('click', () => { storageFilter = key; renderRoomAside(state) })
       tabs.append(b)
     }
-    storagePanel.append(tabs)
+    roomAside.append(tabs)
 
     const list = el('div', 'rack-list')
 
@@ -1054,7 +1098,7 @@ export function buildApp(actions: UIActions) {
         const dot = el('span', 'dot')
         dot.style.background = species.color
         const btn = el('button', 'btn small', `Опт — ${wholesalePrice(species, f)}₽/шт`)
-        btn.addEventListener('click', () => { actions.onWholesaleSell(item.speciesId); renderStoragePanel(state) })
+        btn.addEventListener('click', () => { actions.onWholesaleSell(item.speciesId); renderRoomAside(state) })
         row.append(dot, el('span', 'stock-name', `${species.name} — ${item.count} шт.`), btn)
         list.append(row)
       }
@@ -1086,7 +1130,7 @@ export function buildApp(actions: UIActions) {
       }
     }
 
-    storagePanel.append(list)
+    roomAside.append(list)
 
     const buyRack = el('button', 'btn', `Купить стеллаж — ${STORAGE_TANK_PRICE}₽ (+${STORAGE_RACK_CAPACITY} мест)`)
     buyRack.disabled = state.money < STORAGE_TANK_PRICE || state.racks.length * STORAGE_RACK_CAPACITY >= STORAGE_MAX_SLOTS
@@ -1095,7 +1139,7 @@ export function buildApp(actions: UIActions) {
       setStoreSection('equip')
       switchTab(app, 'store')
     })
-    storagePanel.append(buyRack)
+    roomAside.append(buyRack)
   }
 
   let rackFilter = 'all'
@@ -1533,19 +1577,18 @@ function buildLayout(): HTMLElement {
 
   const zalTab = el('section', 'tab active')
   zalTab.id = 'tab-zal'
-  const zalLayout = el('div', 'zal-layout')
-  const zalMain = el('div', 'zal-main')
-  zalMain.append(
+  const roomLayout = el('div', 'room-layout')
+  const roomStage = el('div', 'room-stage')
+  roomStage.append(
     el('h2', 'sec-title', 'Помещения'),
     el('div', 'room-switch'),
     buildHallCanvas(),
     el('h2', 'sec-title', 'Управление стойками'),
     el('div', 'hall-actions'),
   )
-  const storagePanel = el('aside', 'storage-panel')
-  storagePanel.id = 'storagePanel'
-  zalLayout.append(zalMain, storagePanel)
-  zalTab.append(zalLayout)
+  const roomAside = el('aside', 'room-aside')
+  roomLayout.append(roomStage, roomAside)
+  zalTab.append(roomLayout)
 
   const ordersTab = el('section', 'tab')
   ordersTab.id = 'tab-orders'
@@ -1557,6 +1600,8 @@ function buildLayout(): HTMLElement {
   const aquariumTab = el('section', 'tab')
   aquariumTab.id = 'tab-aquarium'
   aquariumTab.classList.add('aq-tab')
+  const aqLayout = el('div', 'room-layout')
+  const aqStage = el('div', 'room-stage')
   const aqBar = el('div', 'tank-bar')
   aqBar.append(el('label', '', 'Аквариум: '))
   const aquariumSelect = el('select')
@@ -1564,19 +1609,20 @@ function buildLayout(): HTMLElement {
   const aquariumAtt = el('span', '', '')
   aquariumAtt.id = 'aquariumAtt'
   aqBar.append(aquariumSelect, el('span', '', ' · '), aquariumAtt)
-  aquariumTab.append(aqBar)
-  const aqBody = el('div', 'aq-body')
-  const aqStage = el('div', 'aq-stage')
+  aqStage.append(aqBar)
+  const aqStageWrap = el('div', 'aq-stage')
   const canvas = el('canvas')
   canvas.id = 'tank'
   canvas.width = 960
   canvas.height = 420
-  aqStage.append(canvas)
-  const aqInfo = el('aside', 'aq-info')
-  aqInfo.append(el('h3', '', 'Состояние'))
-  aqBody.append(aqStage, aqInfo)
+  aqStageWrap.append(canvas)
+  aqStage.append(aqStageWrap)
   const aqActions = el('div', 'aq-actions')
-  aquariumTab.append(aqBody, aqActions)
+  aqStage.append(aqActions)
+  const aqInfo = el('aside', 'room-aside aq-info')
+  aqInfo.append(el('h3', '', 'Состояние'))
+  aqLayout.append(aqStage, aqInfo)
+  aquariumTab.append(aqLayout)
 
   const storeTab = el('section', 'tab')
   storeTab.id = 'tab-store'
