@@ -12,7 +12,7 @@ import { canStock, maxFitOnShelf, vegetationOf, ROOM_TEMP, shelfOfAquarium } fro
 import { fishWellbeing } from '../sim/wellbeing'
 import { VERSION } from '../version'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
-import type { AquariumState, DecorKind, EquipmentId, FurnitureId, GameState, RoomId, ShelfState, ShopState } from '../types'
+import type { AquariumState, DecorDef, DecorKind, EquipmentId, FishSpecies, FurnitureId, GameState, RoomId, ShelfState, ShopState } from '../types'
 import type { WellBeingReport } from '../sim/wellbeing'
 
 export interface UIActions {
@@ -206,6 +206,7 @@ export function buildApp(actions: UIActions) {
   const decorStore = app.querySelector<HTMLDivElement>('.decor-store')!
   const equipStore = app.querySelector<HTMLDivElement>('.equip-store')!
   const storeTabs = Array.from(app.querySelectorAll<HTMLButtonElement>('[data-group="sale"] .seg-btn'))
+  const storeControls = app.querySelector<HTMLDivElement>('.store-controls')!
   const saleGroup = app.querySelector<HTMLDivElement>('[data-group="sale"]')!
   const furnGroup = app.querySelector<HTMLDivElement>('[data-group="furn"]')!
   const furnShelves = app.querySelector<HTMLDivElement>('.furn-shelves')!
@@ -221,28 +222,36 @@ export function buildApp(actions: UIActions) {
   for (const btn of speedBtns) btn.addEventListener('click', () => actions.onSetSpeed(Number(btn.dataset.speed)))
   aquariumSelect.addEventListener('change', () => actions.onSelectAquarium(aquariumSelect.value))
   function setStoreSection(v: 'fish' | 'decor' | 'equip'): void {
+    activeStoreMode = 'sale'
+    activeStoreSection = v
     for (const b of storeTabs) b.classList.toggle('active', b.dataset.store === v)
     storeGrid.style.display = v === 'fish' ? '' : 'none'
     decorStore.style.display = v === 'decor' ? '' : 'none'
     equipStore.style.display = v === 'equip' ? '' : 'none'
+    renderStoreControls()
   }
   for (const b of storeTabs) b.addEventListener('click', () => setStoreSection((b.dataset.store as 'fish' | 'decor' | 'equip') ?? 'fish'))
   setStoreSection('fish')
 
   function setFurnSection(v: 'shelves' | 'equip' | 'furn' | 'aquariums'): void {
+    activeStoreMode = 'furn'
+    activeStoreSection = v
     for (const b of furnTabs) b.classList.toggle('active', b.dataset.store === v)
     furnShelves.style.display = v === 'shelves' ? '' : 'none'
     furnEquip.style.display = v === 'equip' ? '' : 'none'
     furnFurn.style.display = v === 'furn' ? '' : 'none'
     furnAq.style.display = v === 'aquariums' ? '' : 'none'
+    renderStoreControls()
   }
   for (const b of furnTabs) b.addEventListener('click', () => setFurnSection((b.dataset.store as 'shelves' | 'equip' | 'furn' | 'aquariums') ?? 'shelves'))
   setFurnSection('shelves')
 
   function setStoreMode(mode: 'sale' | 'furn'): void {
+    activeStoreMode = mode
     for (const b of modeButtons) b.classList.toggle('active', b.dataset.mode === mode)
     saleGroup.style.display = mode === 'sale' ? '' : 'none'
     furnGroup.style.display = mode === 'furn' ? '' : 'none'
+    renderStoreControls()
   }
   for (const b of modeButtons) b.addEventListener('click', () => setStoreMode((b.dataset.mode as 'sale' | 'furn') ?? 'sale'))
   setStoreMode('sale')
@@ -260,6 +269,23 @@ export function buildApp(actions: UIActions) {
   let lastPanelCheck = 0
   let lastDayPct = -1
   let renderedLogCount = 0
+
+  let activeStoreMode: 'sale' | 'furn' = 'sale'
+  let activeStoreSection = 'fish'
+  let storeSearch = ''
+  let fishFamilyFilter = 'all'
+  let fishRegionFilter = 'all'
+  let fishGroup: 'none' | 'family' | 'region' = 'none'
+  let fishSort = 'name'
+  let decorGroupFilter = 'all'
+  let decorSort = 'price'
+  let equipCatFilter = 'all'
+  let equipSort = 'price'
+  let furnSort = 'price'
+
+  const EQUIP_CATEGORY_LABEL: Record<string, string> = {
+    filter: 'Фильтры', pump: 'Помпы', light: 'Лампы', heater: 'Нагреватели', co2: 'Углекислый газ', measure: 'Измерение',
+  }
 
   function flash(message: string): void {
     hudFlash.textContent = message
@@ -1288,21 +1314,127 @@ export function buildApp(actions: UIActions) {
     body.append(goShop)
   }
 
+  function chip(label: string, active: boolean, onClick: () => void): HTMLButtonElement {
+    const b = el('button', active ? 'chip active' : 'chip', label)
+    b.addEventListener('click', onClick)
+    return b
+  }
+
+  function renderStoreControls(): void {
+    storeControls.innerHTML = ''
+    if (!latestState) return
+    const top = el('div', 'store-controls-top')
+    const search = el('input', 'store-search') as HTMLInputElement
+    search.type = 'search'
+    search.placeholder = 'Поиск…'
+    search.value = storeSearch
+    search.addEventListener('input', () => { storeSearch = search.value; renderStore(latestState) })
+    top.append(search)
+
+    const chipsRow = el('div', 'filter-chips')
+
+    const isSale = activeStoreMode === 'sale'
+    if (isSale && activeStoreSection === 'fish') {
+      const sortSel = el('select')
+      for (const [v, l] of [['name', 'Сортировка: имя'], ['price', 'Цена ↑'], ['priceDesc', 'Цена ↓'], ['appeal', 'Привлекательность'], ['size', 'Размер']] as const) {
+        const o = el('option'); o.value = v; o.textContent = l; if (fishSort === v) o.selected = true; sortSel.append(o)
+      }
+      sortSel.addEventListener('change', () => { fishSort = sortSel.value; renderStore(latestState) })
+      const groupSel = el('select')
+      for (const [v, l] of [['none', 'Группировка: нет'], ['family', 'По семейству'], ['region', 'По региону']] as const) {
+        const o = el('option'); o.value = v; o.textContent = l; if (fishGroup === v) o.selected = true; groupSel.append(o)
+      }
+      groupSel.addEventListener('change', () => { fishGroup = groupSel.value as typeof fishGroup; renderStore(latestState) })
+      top.append(sortSel, groupSel)
+
+      const fams = Array.from(new Set(FISH_SPECIES.map((f) => f.family))).sort()
+      const regions = Array.from(new Set(FISH_SPECIES.map((f) => f.region))).sort()
+      chipsRow.append(el('span', 'filter-label', 'Семейство:'))
+      chipsRow.append(chip('Все', fishFamilyFilter === 'all', () => { fishFamilyFilter = 'all'; renderStore(latestState) }))
+      for (const fam of fams) chipsRow.append(chip(fam, fishFamilyFilter === fam, () => { fishFamilyFilter = fam; renderStore(latestState) }))
+      chipsRow.append(el('span', 'filter-label', 'Регион:'))
+      chipsRow.append(chip('Все', fishRegionFilter === 'all', () => { fishRegionFilter = 'all'; renderStore(latestState) }))
+      for (const r of regions) chipsRow.append(chip(r, fishRegionFilter === r, () => { fishRegionFilter = r; renderStore(latestState) }))
+    } else if (isSale && activeStoreSection === 'decor') {
+      const sortSel = el('select')
+      for (const [v, l] of [['price', 'Сортировка: цена'], ['priceDesc', 'Цена ↓'], ['appeal', 'Привлекательность'], ['name', 'Имя']] as const) {
+        const o = el('option'); o.value = v; o.textContent = l; if (decorSort === v) o.selected = true; sortSel.append(o)
+      }
+      sortSel.addEventListener('change', () => { decorSort = sortSel.value; renderStore(latestState) })
+      top.append(sortSel)
+      const groups = Array.from(new Set(DECOR_KINDS.map((k) => DECOR[k].group))).sort()
+      chipsRow.append(el('span', 'filter-label', 'Группа:'))
+      chipsRow.append(chip('Все', decorGroupFilter === 'all', () => { decorGroupFilter = 'all'; renderStore(latestState) }))
+      for (const g of groups) chipsRow.append(chip(g, decorGroupFilter === g, () => { decorGroupFilter = g; renderStore(latestState) }))
+    } else if (isSale && activeStoreSection === 'equip') {
+      const sortSel = el('select')
+      for (const [v, l] of [['price', 'Сортировка: цена'], ['priceDesc', 'Цена ↓'], ['power', 'Мощность'], ['name', 'Имя']] as const) {
+        const o = el('option'); o.value = v; o.textContent = l; if (equipSort === v) o.selected = true; sortSel.append(o)
+      }
+      sortSel.addEventListener('change', () => { equipSort = sortSel.value; renderStore(latestState) })
+      top.append(sortSel)
+      chipsRow.append(el('span', 'filter-label', 'Категория:'))
+      chipsRow.append(chip('Все', equipCatFilter === 'all', () => { equipCatFilter = 'all'; renderStore(latestState) }))
+      for (const key of Object.keys(EQUIP_CATEGORY_LABEL)) chipsRow.append(chip(EQUIP_CATEGORY_LABEL[key], equipCatFilter === key, () => { equipCatFilter = key; renderStore(latestState) }))
+    } else {
+      const sortSel = el('select')
+      for (const [v, l] of [['price', 'Сортировка: цена'], ['name', 'Имя']] as const) {
+        const o = el('option'); o.value = v; o.textContent = l; if (furnSort === v) o.selected = true; sortSel.append(o)
+      }
+      sortSel.addEventListener('change', () => { furnSort = sortSel.value; renderStore(latestState) })
+      top.append(sortSel)
+    }
+
+    storeControls.append(top)
+    if (chipsRow.childNodes.length > 0) storeControls.append(chipsRow)
+  }
+
   function renderStore(state: GameState): void {
+    renderStoreControls()
     storeGrid.innerHTML = ''
     equipStore.innerHTML = ''
     decorStore.innerHTML = ''
 
-    for (const species of FISH_SPECIES) {
-      const factor = state.market[species.id] ?? 1
+    renderStoreFish(state)
+    renderStoreDecor(state)
+    renderStoreEquip(state)
+    renderFurnStore(state)
+  }
+
+  function renderStoreFish(state: GameState): void {
+    let items = FISH_SPECIES.map((species) => ({ species, factor: state.market[species.id] ?? 1 }))
+    const q = storeSearch.trim().toLowerCase()
+    if (q) items = items.filter(({ species }) => species.name.toLowerCase().includes(q) || species.latin.toLowerCase().includes(q))
+    if (fishFamilyFilter !== 'all') items = items.filter(({ species }) => species.family === fishFamilyFilter)
+    if (fishRegionFilter !== 'all') items = items.filter(({ species }) => species.region === fishRegionFilter)
+    const cmp: Record<string, (a: { species: FishSpecies; factor: number }, b: { species: FishSpecies; factor: number }) => number> = {
+      name: (a, b) => a.species.name.localeCompare(b.species.name, 'ru'),
+      price: (a, b) => buyPrice(a.species, a.factor) - buyPrice(b.species, b.factor),
+      priceDesc: (a, b) => buyPrice(b.species, b.factor) - buyPrice(a.species, a.factor),
+      appeal: (a, b) => a.species.appeal - b.species.appeal,
+      size: (a, b) => a.species.sizeCm - b.species.sizeCm,
+    }
+    items.sort(cmp[fishSort] ?? cmp.name)
+
+    const byGroup = fishGroup === 'family' ? 'family' : fishGroup === 'region' ? 'region' : null
+    let lastKey: string | null = null
+    for (const { species, factor } of items) {
+      const key = byGroup ? species[byGroup] : null
+      if (byGroup && key !== lastKey) {
+        lastKey = key
+        storeGrid.append(el('div', 'grid-group-head', byGroup === 'family' ? `${species.family} — семейство` : species.region))
+      }
       const card = el('div', 'store-card')
       const head = el('div', 'store-head')
       const dot = el('span', 'dot')
       dot.style.background = species.color
       head.append(dot, el('strong', 'store-name', species.name))
+      const badges = el('div', 'store-badges')
+      badges.append(el('span', 'badge', species.family), el('span', 'badge', species.region))
       card.append(
         head,
         el('div', 'store-latin', species.latin),
+        badges,
         demandBadge(factor),
         el('div', 'store-params', [
           `${species.sizeCm} см · мин. ${species.minVolume} л`,
@@ -1324,12 +1456,25 @@ export function buildApp(actions: UIActions) {
       if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${buyPrice(species, factor)}₽`))
       storeGrid.append(card)
     }
+    if (items.length === 0) storeGrid.append(el('div', 'store-empty', 'Ничего не найдено'))
+  }
 
-    for (const kind of DECOR_KINDS) {
-      const def = DECOR[kind]
+  function renderStoreDecor(state: GameState): void {
+    let items = DECOR_KINDS.map((kind) => ({ kind, def: DECOR[kind] }))
+    const q = storeSearch.trim().toLowerCase()
+    if (q) items = items.filter(({ def }) => def.name.toLowerCase().includes(q))
+    if (decorGroupFilter !== 'all') items = items.filter(({ def }) => def.group === decorGroupFilter)
+    const cmp: Record<string, (a: { def: DecorDef }, b: { def: DecorDef }) => number> = {
+      price: (a, b) => a.def.price - b.def.price,
+      priceDesc: (a, b) => b.def.price - a.def.price,
+      appeal: (a, b) => a.def.attract - b.def.attract,
+      name: (a, b) => a.def.name.localeCompare(b.def.name, 'ru'),
+    }
+    items.sort(cmp[decorSort] ?? cmp.price)
+    for (const { kind, def } of items) {
       const card = el('div', 'store-card')
       const head = el('div', 'store-head')
-      head.append(el('strong', 'store-name', def.name))
+      head.append(el('strong', 'store-name', def.name), el('span', 'badge', def.group))
       card.append(
         head,
         el('div', 'store-desc', def.desc),
@@ -1349,19 +1494,33 @@ export function buildApp(actions: UIActions) {
       else if (storageFull) card.append(storeReason(storageFullReason(state.racks.length, state.shop)))
       decorStore.append(card)
     }
+    if (items.length === 0) decorStore.append(el('div', 'store-empty', 'Ничего не найдено'))
+  }
 
-    for (const eid of EQUIPMENT_IDS) {
+  function renderStoreEquip(state: GameState): void {
+    let ids = EQUIPMENT_IDS as EquipmentId[]
+    const q = storeSearch.trim().toLowerCase()
+    if (q) ids = ids.filter((eid) => EQUIPMENT[eid].name.toLowerCase().includes(q))
+    if (equipCatFilter !== 'all') ids = ids.filter((eid) => EQUIPMENT[eid].category === equipCatFilter)
+    const cmp: Record<string, (a: EquipmentId, b: EquipmentId) => number> = {
+      price: (a, b) => EQUIPMENT[a].price - EQUIPMENT[b].price,
+      priceDesc: (a, b) => EQUIPMENT[b].price - EQUIPMENT[a].price,
+      power: (a, b) => EQUIPMENT[a].power - EQUIPMENT[b].power,
+      name: (a, b) => EQUIPMENT[a].name.localeCompare(EQUIPMENT[b].name, 'ru'),
+    }
+    ids.sort(cmp[equipSort] ?? cmp.price)
+    for (const eid of ids) {
       const def = EQUIPMENT[eid]
       const owned = state.shop.rackInventory.filter((c) => c === eid).length
       const card = el('div', 'store-card')
       const head2 = el('div', 'store-head')
-      head2.append(el('strong', 'store-name', def.name))
+      head2.append(el('strong', 'store-name', def.name), el('span', 'badge', EQUIP_CATEGORY_LABEL[def.category] ?? def.category))
       card.append(
         head2,
         el('div', 'store-desc', def.desc),
         (() => {
           const p = el('div', 'store-prices')
-          p.append(el('span', '', `На складе: ${owned}`))
+          p.append(el('span', '', def.power > 0 ? `Мощность: ${def.power} Вт` : ''), el('span', '', `На складе: ${owned}`))
           return p
         })(),
       )
@@ -1375,8 +1534,7 @@ export function buildApp(actions: UIActions) {
       else if (storageFull) card.append(storeReason(storageFullReason(state.racks.length, state.shop)))
       equipStore.append(card)
     }
-
-    renderFurnStore(state)
+    if (ids.length === 0) equipStore.append(el('div', 'store-empty', 'Ничего не найдено'))
   }
 
   function openBuyRoomModal(title: string, action: (roomId: RoomId) => void): void {
@@ -1657,7 +1815,9 @@ function buildLayout(): HTMLElement {
   const furnAq = el('div', 'decor-store furn-aq')
   furnGroup.append(furnTabs, furnShelves, furnEquip, furnFurn, furnAq)
 
-  storeTab.append(storeMode, saleGroup, furnGroup)
+  const storeControls = el('div', 'store-controls')
+
+  storeTab.append(storeMode, storeControls, saleGroup, furnGroup)
 
   main.append(zalTab, aquariumTab, storeTab, ordersTab)
 

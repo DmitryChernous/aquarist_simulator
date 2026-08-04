@@ -7,6 +7,7 @@ export const DECOR: Record<DecorKind, DecorDef> = {
     price: 25,
     attract: 4,
     desc: '+привлекательность, поднимает растительность (повышает vegetation)',
+    group: 'Растения',
   },
   stone: {
     kind: 'stone',
@@ -14,6 +15,7 @@ export const DECOR: Record<DecorKind, DecorDef> = {
     price: 18,
     attract: 3,
     desc: '+привлекательность, слабо повышает жёсткость GH',
+    group: 'Камни',
   },
   driftwood: {
     kind: 'driftwood',
@@ -21,6 +23,7 @@ export const DECOR: Record<DecorKind, DecorDef> = {
     price: 35,
     attract: 6,
     desc: '+привлекательность, подкисляет воду (снижает pH)',
+    group: 'Коряги',
   },
   substrate: {
     kind: 'substrate',
@@ -28,6 +31,7 @@ export const DECOR: Record<DecorKind, DecorDef> = {
     price: 40,
     attract: 5,
     desc: '+привлекательность, натуральная подложка для аквариума',
+    group: 'Грунт',
   },
 }
 

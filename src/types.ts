@@ -3,6 +3,8 @@ export interface FishSpecies {
   name: string
   latin: string
   color: string
+  family: string // семейство (для каталога и группировки)
+  region: string // регион обитания
   buyPrice: number
   sellPrice: number
   sizeCm: number
@@ -69,6 +71,8 @@ export interface WaterLevels {
 // --- Оборудование ---
 export type EquipmentId = 'heater' | 'thermometer' | 'filter' | 'airPump' | 'light' | 'co2'
 
+export type EquipmentCategory = 'filter' | 'pump' | 'light' | 'heater' | 'co2' | 'measure'
+
 export interface EquipmentParamDef {
   id: string
   label: string
@@ -84,6 +88,8 @@ export interface EquipmentDef {
   name: string
   price: number
   desc: string
+  category: EquipmentCategory // категория: фильтры/помпы/лампы/нагреватели/CO₂/измерение
+  power: number // потребляемая мощность, Вт
   params: EquipmentParamDef[]
 }
 
@@ -108,6 +114,7 @@ export interface DecorDef {
   price: number
   attract: number
   desc: string
+  group: string // группа для каталога (например для растений: мхи/папоротники/стеблевые/розеточные)
 }
 
 // --- Аквариум (витрина) ---

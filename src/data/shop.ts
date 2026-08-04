@@ -1,10 +1,12 @@
-import type { EquipmentDef, EquipmentId, ShopState } from '../types'
+﻿import type { EquipmentDef, EquipmentId, ShopState } from '../types'
 
 export const EQUIPMENT: Record<EquipmentId, EquipmentDef> = {
   heater: {
     id: 'heater',
     name: 'Нагреватель',
     price: 60,
+    category: 'heater',
+    power: 150,
     desc: 'Поддерживает температуру на заданном значении',
     params: [
       { id: 'target', label: 'Целевая °C', min: 15, max: 35, step: 0.5, unit: '°C', default: 25 },
@@ -14,6 +16,8 @@ export const EQUIPMENT: Record<EquipmentId, EquipmentDef> = {
     id: 'thermometer',
     name: 'Термометр',
     price: 30,
+    category: 'measure',
+    power: 0,
     desc: 'Точный контроль: +привлекательность витрины',
     params: [{ id: 'check', label: 'Контроль', min: 0, max: 1, step: 1, unit: '', default: 1 }],
   },
@@ -21,6 +25,8 @@ export const EQUIPMENT: Record<EquipmentId, EquipmentDef> = {
     id: 'airPump',
     name: 'Аэратор (поверхность O₂)',
     price: 45,
+    category: 'pump',
+    power: 5,
     desc: 'Поднимает уровень кислорода O₂ в соответствии с мощностью',
     params: [
       { id: 'power', label: 'Мощность', min: 0, max: 100, step: 5, unit: '%', default: 60 },
@@ -30,6 +36,8 @@ export const EQUIPMENT: Record<EquipmentId, EquipmentDef> = {
     id: 'light',
     name: 'Освещение',
     price: 70,
+    category: 'light',
+    power: 15,
     desc: 'Задаёт уровень освещения согласно интенсивности',
     params: [
       { id: 'intensity', label: 'Интенсивность', min: 0, max: 100, step: 5, unit: '%', default: 60 },
@@ -39,6 +47,8 @@ export const EQUIPMENT: Record<EquipmentId, EquipmentDef> = {
     id: 'filter',
     name: 'Фильтр',
     price: 80,
+    category: 'filter',
+    power: 8,
     desc: 'Снижает ущерб от жёсткости и ускоряет выздоровление рыб',
     params: [
       { id: 'flow', label: 'Проток', min: 0, max: 100, step: 5, unit: '%', default: 60 },
@@ -48,6 +58,8 @@ export const EQUIPMENT: Record<EquipmentId, EquipmentDef> = {
     id: 'co2',
     name: 'CO₂-дозатор',
     price: 100,
+    category: 'co2',
+    power: 0,
     desc: 'Подаёт CO₂, повышает растительность (хардкор: готов к учёту CO₂)',
     params: [
       { id: 'dosage', label: 'Дозировка', min: 0, max: 100, step: 5, unit: '%', default: 40 },
