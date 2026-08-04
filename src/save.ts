@@ -65,17 +65,16 @@ export function defaultState(): GameState {
     shop: {
       cashRegister: false,
       furniture: {},
-      componentRacks: 1,
+      storageRacks: 1,
       rackInventory: ['heater', 'thermometer', 'airPump', 'filter'],
       rackDecor: [],
       shelvesInventory: [],
     },
     shelves: [{ id: 'sh1', name: 'Стойка 1', roomId: 'hall', pos: { x: 0, y: 0 }, slabs, loadCapacityL: 300, specId: 'compact', aquariums: [aq] }],
-    storage: [{ id: 's1', name: 'Склад 1', kind: 'storage', stock: [] }],
+    storage: { id: 's1', name: 'Склад 1', kind: 'storage', stock: [] },
     market: Object.fromEntries(FISH_SPECIES.map((s) => [s.id, 1])),
     orders: [],
     selectedAquariumId: 'a1',
-    selectedStorageId: 's1',
     viewRoom: 'hall',
     day: 1,
     daySeconds: 0,
@@ -122,6 +121,22 @@ function migrateStorageTanks(tanks: any[]): TankState[] {
     }))
 }
 
+// Сливает старое хранение (массив складов) в единственный склад.
+function normalizeStorage(parsed: any, base: TankState): TankState {
+  const list = Array.isArray(parsed) ? parsed : parsed && typeof parsed === 'object' ? [parsed] : []
+  const stock: { speciesId: string; count: number }[] = []
+  for (const t of list) {
+    if (!t || !Array.isArray(t.stock)) continue
+    for (const it of t.stock) {
+      if (!it || typeof it.speciesId !== 'string') continue
+      const ex = stock.find((s) => s.speciesId === it.speciesId)
+      if (ex) ex.count += Number(it.count ?? 0)
+      else stock.push({ speciesId: it.speciesId, count: Number(it.count ?? 0) })
+    }
+  }
+  return { ...base, stock: stock.filter((s) => s.count > 0) }
+}
+
 function migrateDisplayTanks(tanks: any[]): AquariumState[] {
   const displays = (Array.isArray(tanks) ? tanks : []).filter((t) => t && t.kind === 'display')
   const model = AQUARIUM_MODELS.find((m) => m.volume === 100) ?? AQUARIUM_MODELS[2]
@@ -154,7 +169,7 @@ export function loadState(): GameState {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<GameState>
-      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.shelves) || !Array.isArray(parsed.storage)) {
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.shelves)) {
         return defaultState()
       }
       const base = defaultState()
@@ -168,13 +183,16 @@ export function loadState(): GameState {
           x: typeof a.x === 'number' ? a.x : 0,
         })),
       }))
+      const storage = normalizeStorage(parsed.storage, base.storage)
       return {
         ...base,
         ...parsed,
+        storage,
         viewRoom: ((parsed as any).viewRoom ?? 'hall') as RoomId,
         shop: {
           ...base.shop,
           ...(parsed.shop ?? {}),
+          storageRacks: Number((parsed.shop?.storageRacks ?? (parsed.shop as any)?.componentRacks ?? base.shop.storageRacks)),
           furniture: migrateFurniture(parsed.shop),
           shelvesInventory: parsed.shop?.shelvesInventory ?? [],
           rackDecor: parsed.shop?.rackDecor ?? base.shop.rackDecor,
@@ -186,39 +204,44 @@ export function loadState(): GameState {
     if (legacyRaw) {
       const old = JSON.parse(legacyRaw) as any
       if (old && Array.isArray(old.tanks)) {
-        const aquariums = migrateDisplayTanks(old.tanks)
-        const storage = migrateStorageTanks(old.tanks)
-        localStorage.removeItem('aquarist-save-v3')
-        return {
-          ...defaultState(),
-          money: Number.isFinite(Number(old.money)) ? Number(old.money) : START_MONEY,
-          shop: {
-            cashRegister: Boolean(old.shop?.cashRegister),
-            furniture: migrateFurniture(old.shop),
-            componentRacks: Number(old.shop?.componentRacks ?? 1),
-            rackInventory: Array.isArray(old.shop?.rackInventory) ? old.shop.rackInventory : [],
-            rackDecor: Array.isArray(old.shop?.rackDecor) ? old.shop.rackDecor : [],
-            shelvesInventory: [],
+      const aquariums = migrateDisplayTanks(old.tanks)
+      const storageTanks = migrateStorageTanks(old.tanks)
+      const mergedStock: { speciesId: string; count: number }[] = []
+      for (const t of storageTanks) for (const it of t.stock) {
+        const ex = mergedStock.find((s) => s.speciesId === it.speciesId)
+        if (ex) ex.count += it.count
+        else mergedStock.push({ ...it })
+      }
+      localStorage.removeItem('aquarist-save-v3')
+      return {
+        ...defaultState(),
+        money: Number.isFinite(Number(old.money)) ? Number(old.money) : START_MONEY,
+        shop: {
+          cashRegister: Boolean(old.shop?.cashRegister),
+          furniture: migrateFurniture(old.shop),
+          storageRacks: Number(old.shop?.componentRacks ?? old.shop?.storageRacks ?? 1),
+          rackInventory: Array.isArray(old.shop?.rackInventory) ? old.shop.rackInventory : [],
+          rackDecor: Array.isArray(old.shop?.rackDecor) ? old.shop.rackDecor : [],
+          shelvesInventory: [],
+        },
+        shelves: [
+          {
+            id: 'sh1',
+            name: 'Стойка 1',
+            roomId: 'hall',
+            pos: { x: 0, y: 0 },
+            slabs: [
+              { id: 'slab0', width: 600, depth: 45, height: 55, slot: 0 },
+              { id: 'slab1', width: 600, depth: 45, height: 55, slot: 1 },
+            ],
+            loadCapacityL: Math.max(200, aquariums.reduce((acc, a) => acc + a.volume, 0)),
+            specId: 'compact',
+            aquariums,
           },
-          shelves: [
-            {
-              id: 'sh1',
-              name: 'Стойка 1',
-              roomId: 'hall',
-              pos: { x: 0, y: 0 },
-              slabs: [
-                { id: 'slab0', width: 600, depth: 45, height: 55, slot: 0 },
-                { id: 'slab1', width: 600, depth: 45, height: 55, slot: 1 },
-              ],
-              loadCapacityL: Math.max(200, aquariums.reduce((acc, a) => acc + a.volume, 0)),
-              specId: 'compact',
-              aquariums,
-            },
-          ],
-          storage,
-          selectedAquariumId: aquariums[0]?.id ?? null,
-          selectedStorageId: storage[0]?.id ?? null,
-          viewRoom: 'hall',
+        ],
+        storage: { id: 's1', name: 'Склад 1', kind: 'storage', stock: mergedStock },
+        selectedAquariumId: aquariums[0]?.id ?? null,
+        viewRoom: 'hall',
           day: Number.isFinite(Number(old.day)) && Number(old.day) > 0 ? Number(old.day) : 1,
           orders: Array.isArray(old.orders) ? old.orders : [],
           nextVisitorIn: Number.isFinite(Number(old.nextVisitorIn)) ? Number(old.nextVisitorIn) : 25,

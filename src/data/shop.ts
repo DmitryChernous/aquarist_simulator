@@ -60,6 +60,8 @@ export const EQUIPMENT_IDS = Object.keys(EQUIPMENT) as EquipmentId[]
 export const EQUIPMENT_SLOTS_PER_TANK = 4
 export const EQUIPMENT_SLOTS_PER_RACK = 8
 export const STORAGE_TANK_PRICE = 150
+export const STORAGE_MAX_SLOTS = 500 // тестовая граница вместимости склада
+export const STORAGE_RACK_CAPACITY = 40 // вместимость одного стеллажа
 
 export const SHELVES: Record<string, import('../types').ShelfSpec> = {
   compact: {
@@ -95,8 +97,7 @@ export const SHELF_SPECS = Object.values(SHELVES)
 export type ShelfSpecId = keyof typeof SHELVES
 
 export function storageCapacity(shop: ShopState): number {
-  const displayRacks = shop.furniture?.displayRack ?? 0
-  return (shop.componentRacks + displayRacks) * EQUIPMENT_SLOTS_PER_RACK
+  return Math.min(STORAGE_MAX_SLOTS, shop.storageRacks * STORAGE_RACK_CAPACITY)
 }
 
 export function storageUsed(shop: ShopState): number {

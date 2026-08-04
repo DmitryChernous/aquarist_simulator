@@ -41,7 +41,7 @@ export function shopAttractiveness(state: GameState): number {
   const diversity = Math.min(speciesSet.size / 6, 1) * 100
   const hallShelves = state.shelves.filter((s) => s.roomId === 'hall').length
   const equipment = Math.min(
-    furnitureAttractBonus(state.shop) + state.shop.componentRacks * 3 + hallShelves * 2,
+    furnitureAttractBonus(state.shop) + state.shop.storageRacks * 3 + hallShelves * 2,
     25,
   )
 
@@ -188,5 +188,5 @@ function generateItemOrder(state: GameState, capacity: number): Order | null {
 }
 
 function allStorage2(state: GameState): TankState[] {
-  return state.storage
+  return [state.storage]
 }

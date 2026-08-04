@@ -209,7 +209,7 @@ export interface FurnitureDef {
 export interface ShopState {
   cashRegister: boolean
   furniture: Partial<Record<FurnitureId, number>> // купленная мебель (вкл. стеллаж-витрину)
-  componentRacks: number
+  storageRacks: number // стеллажи склада: каждый даёт +STORAGE_RACK_CAPACITY мест
   rackInventory: EquipmentId[] // оборудование на полке склада
   rackDecor: DecorKind[] // декорации на складе
   shelvesInventory: string[] // купленные, но ещё не размещённые стойки
@@ -241,11 +241,10 @@ export interface GameState {
   money: number
   shop: ShopState
   shelves: ShelfState[]
-  storage: TankState[]
+  storage: TankState // единственный склад
   market: Record<string, number>
   orders: Order[]
   selectedAquariumId: string | null
-  selectedStorageId: string | null
   viewRoom: RoomId
   day: number
   daySeconds: number

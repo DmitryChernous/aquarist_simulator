@@ -22,9 +22,7 @@ export function stockTotal(stock: { speciesId: string; count: number }[]): numbe
 
 export function availableStock(state: GameState, speciesId: string): number {
   let n = 0
-  for (const tank of state.storage) {
-    for (const item of tank.stock) if (item.speciesId === speciesId) n += item.count
-  }
+  for (const item of state.storage.stock) if (item.speciesId === speciesId) n += item.count
   return n
 }
 
@@ -42,8 +40,6 @@ export function dailyUpkeep(state: GameState, speciesById: Record<string, FishSp
     for (const fish of aq.fish) cost += speciesById[fish.speciesId].sizeCm * 0.1
     for (const _eq of aq.equipment) cost += 4
   }
-  for (const tank of state.storage) {
-    for (const item of tank.stock) cost += speciesById[item.speciesId].sizeCm * 0.05 * item.count
-  }
+  for (const item of state.storage.stock) cost += speciesById[item.speciesId].sizeCm * 0.05 * item.count
   return Math.round(cost)
 }

@@ -40,7 +40,7 @@ export interface ShelfRect {
 }
 
 export interface StorageObjectRect {
-  id: 'componentRacks' | 'displayRack'
+  id: 'storageRacks' | 'displayRack'
   label: string
   box: Box
   x: number
@@ -218,7 +218,7 @@ export function layoutStorageObjects(state: GameState): StorageObjectRect[] {
     out.push({ id, label, box: b, x: b.x, y: b.y - b.h, w: b.w, h: b.h })
     cursor += 4
   }
-  if (state.shop.componentRacks > 0) add('componentRacks', `Полка комплектующих ×${state.shop.componentRacks}`)
+  if (state.shop.storageRacks > 0) add('storageRacks', `Стеллаж ×${state.shop.storageRacks}`)
   const displays = state.shop.furniture?.displayRack ?? 0
   if (displays > 0) add('displayRack', `Стеллаж-витрина ×${displays}`)
   return out

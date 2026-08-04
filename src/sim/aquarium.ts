@@ -24,7 +24,7 @@ export function shelfOfAquarium(state: GameState, aq: AquariumState): ShelfState
 }
 
 export function allStorage(state: GameState): TankState[] {
-  return state.storage
+  return [state.storage]
 }
 
 // --- Размещение аквариумов на стойке ---

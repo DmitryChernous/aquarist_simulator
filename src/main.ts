@@ -2,7 +2,7 @@ import './style.css'
 import { VERSION } from './version'
 import { SPECIES_BY_ID } from './data/fish'
 import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from './data/aquarium'
-import { EQUIPMENT, SHELVES, STORAGE_TANK_PRICE, storageCapacity, storageUsed } from './data/shop'
+import { EQUIPMENT, SHELVES, STORAGE_MAX_SLOTS, STORAGE_RACK_CAPACITY, STORAGE_TANK_PRICE, storageCapacity, storageUsed } from './data/shop'
 import { DECOR } from './data/decor'
 import { FURNITURE } from './data/furniture'
 import { ROOM_BY_ID } from './data/rooms'
@@ -60,26 +60,21 @@ function shelfAquariumNum(shelfId: string): number {
   return shelf ? shelf.aquariums.length : 0
 }
 
-function storageTank(state: GameState, id: string | null): TankState | undefined {
-  return state.storage.find((t) => t.id === id)
-}
-
-function addStock(tank: TankState, speciesId: string, count: number): void {
-  const item = tank.stock.find((s) => s.speciesId === speciesId)
+function addStock(stock: TankState['stock'], speciesId: string, count: number): void {
+  const item = stock.find((s) => s.speciesId === speciesId)
   if (item) item.count += count
-  else tank.stock.push({ speciesId, count })
+  else stock.push({ speciesId, count })
 }
 
 function takeStock(speciesId: string, n: number): number {
   let need = n
-  for (const tank of state.storage) {
-    if (need <= 0) break
-    const item = tank.stock.find((s) => s.speciesId === speciesId)
-    if (!item || item.count <= 0) continue
+  const stock = state.storage.stock
+  const item = stock.find((s) => s.speciesId === speciesId)
+  if (item && item.count > 0) {
     const take = Math.min(item.count, need)
     item.count -= take
     need -= take
-    if (item.count <= 0) tank.stock = tank.stock.filter((s) => s.speciesId !== speciesId)
+    if (item.count <= 0) state.storage.stock = stock.filter((s) => s.speciesId !== speciesId)
   }
   return n - need
 }
@@ -218,15 +213,28 @@ const ui = buildApp({
     bump()
   },
   onBuyShopItem(kind) {
-    const PRICES = { cashRegister: 300, componentRack: 150 }
+    const PRICES = { cashRegister: 300 }
     if (state.money < PRICES[kind]) {
       ui.flash('Не хватает денег!')
       return
     }
     state.money -= PRICES[kind]
     if (kind === 'cashRegister') state.shop.cashRegister = true
-    else if (kind === 'componentRack') state.shop.componentRacks += 1
     pushLog(`Куплено оборудование зала за ${PRICES[kind]}₽`, 'buy')
+    bump()
+  },
+  onBuyStorageRack() {
+    if (state.shop.storageRacks * STORAGE_RACK_CAPACITY >= STORAGE_MAX_SLOTS) {
+      ui.flash('Достигнут предел вместимости склада!')
+      return
+    }
+    if (state.money < STORAGE_TANK_PRICE) {
+      ui.flash('Не хватает денег!')
+      return
+    }
+    state.money -= STORAGE_TANK_PRICE
+    state.shop.storageRacks += 1
+    pushLog(`Куплен стеллаж склада за ${STORAGE_TANK_PRICE}₽ (+${STORAGE_RACK_CAPACITY} мест)`, 'buy')
     bump()
   },
   onBuyFurniture(id: FurnitureId) {
@@ -275,10 +283,6 @@ const ui = buildApp({
     state.selectedAquariumId = aqId
     bump()
   },
-  onSelectStorage(storageId) {
-    state.selectedStorageId = storageId
-    bump()
-  },
   onUpgradeDesign(aqId) {
     const aq = aquariumById(aqId)
     if (!aq || aq.designLevel >= MAX_DESIGN_LEVEL) return
@@ -305,7 +309,7 @@ const ui = buildApp({
       return
     }
     if (storageUsed(state.shop) >= storageCapacity(state.shop)) {
-      ui.flash('Место на складе закончилось! Купите полку или стеллаж в «Магазине».')
+      ui.flash('Место на складе закончилось! Купите стеллаж в «Магазине».')
       return
     }
     state.money -= def.price
@@ -457,7 +461,7 @@ onInstallEquipment(id, aqId) {
       return
     }
     if (storageUsed(state.shop) >= storageCapacity(state.shop)) {
-      ui.flash('Место на складе закончилось! Купите полку или стеллаж в «Магазине».')
+      ui.flash('Место на складе закончилось! Купите стеллаж в «Магазине».')
       return
     }
     state.money -= def.price
@@ -499,11 +503,8 @@ onInstallEquipment(id, aqId) {
     const fish = aq.fish.find((f) => f.id === fishId)
     if (!fish) return
     aq.fish = aq.fish.filter((f) => f.id !== fishId)
-    const storage = storageTank(state, state.selectedStorageId) ?? state.storage[0]
-    if (storage) {
-      addStock(storage, fish.speciesId, 1)
-      pushLog(`${SPECIES_BY_ID[fish.speciesId].name} убрана с аквариума в склад`, 'info')
-    }
+    addStock(state.storage.stock, fish.speciesId, 1)
+    pushLog(`${SPECIES_BY_ID[fish.speciesId].name} убрана с аквариума в склад`, 'info')
     bump()
   },
   onFeed(aqId, fishId) {
@@ -528,9 +529,7 @@ onInstallEquipment(id, aqId) {
     )
     bump()
   },
-  onBuyFishToStorage(speciesId, storageId) {
-    const storage = storageTank(state, storageId)
-    if (!storage) return
+  onBuyFishToStorage(speciesId) {
     const species = SPECIES_BY_ID[speciesId]
     const price = buyPrice(species, state.market[speciesId] ?? 1)
     if (state.money < price) {
@@ -538,20 +537,18 @@ onInstallEquipment(id, aqId) {
       return
     }
     state.money -= price
-    addStock(storage, speciesId, 1)
+    addStock(state.storage.stock, speciesId, 1)
     pushLog(`Куплена ${species.name} за ${price}₽ на склад`, 'buy')
     bump()
   },
-  onWholesaleSell(speciesId, storageId) {
-    const storage = storageTank(state, storageId)
-    if (!storage) return
-    const item = storage.stock.find((s) => s.speciesId === speciesId)
+  onWholesaleSell(speciesId) {
+    const item = state.storage.stock.find((s) => s.speciesId === speciesId)
     if (!item || item.count <= 0) return
     const species = SPECIES_BY_ID[speciesId]
     const revenue = wholesalePrice(species, state.market[speciesId] ?? 1) * item.count
     state.money += revenue
     state.sales += item.count
-    storage.stock = storage.stock.filter((s) => s.speciesId !== speciesId)
+    state.storage.stock = state.storage.stock.filter((s) => s.speciesId !== speciesId)
     pushLog(`Оптовая продажа ${item.count} × ${species.name} за ${revenue}₽`, 'sell')
     bump()
   },
@@ -569,18 +566,6 @@ onInstallEquipment(id, aqId) {
     state.sales += order.qty
     state.orders.splice(idx, 1)
     pushLog(`Продано ${order.qty} × ${orderLabel(order)} за ${revenue}₽`, 'sell')
-    bump()
-  },
-  onAddStorage() {
-    if (state.money < STORAGE_TANK_PRICE) {
-      ui.flash('Не хватает денег!')
-      return
-    }
-    state.money -= STORAGE_TANK_PRICE
-    const tank: TankState = { id: uid('s'), name: `Склад ${state.storage.length + 1}`, kind: 'storage', stock: [] }
-    state.storage.push(tank)
-    state.selectedStorageId = tank.id
-    pushLog(`Открыт склад «${tank.name}» за ${STORAGE_TANK_PRICE}₽`, 'buy')
     bump()
   },
   onTogglePause() {
@@ -708,7 +693,7 @@ function updateAquariums(dt: number): void {
 }
 
 function tryArrive(): void {
-  const anyFishOrStock = allAquariums(state).some((a) => a.fish.length > 0) || state.storage.some((t) => t.stock.some((i) => i.count > 0))
+  const anyFishOrStock = allAquariums(state).some((a) => a.fish.length > 0) || state.storage.stock.some((i) => i.count > 0)
   if (!anyFishOrStock) {
     state.nextVisitorIn = 60
     return
