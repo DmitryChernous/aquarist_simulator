@@ -736,4 +736,3 @@ function frame(now: number): void {
 
 requestAnimationFrame(frame)
 setInterval(() => saveState(state), 2000)
-setInterval(() => bump(), 1000)

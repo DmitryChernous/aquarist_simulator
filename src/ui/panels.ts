@@ -252,6 +252,15 @@ export function buildApp(actions: UIActions) {
   let lastFlashAt = 0
   let latestState: GameState = null as unknown as GameState
 
+  let activeTab: TabName = 'zal'
+  let lastZalFp = ''
+  let lastAqFp = ''
+  let lastOrdersFp = ''
+  let lastStoreFp = ''
+  let lastPanelCheck = 0
+  let lastDayPct = -1
+  let renderedLogCount = 0
+
   function flash(message: string): void {
     hudFlash.textContent = message
     hudFlash.classList.add('show')
@@ -260,29 +269,123 @@ export function buildApp(actions: UIActions) {
 
   function update(state: GameState, shopAtt: number, timeScale: number, paused: boolean): void {
     latestState = state
-    hudMoney.textContent = `Деньги: ${state.money}₽`
-    hudDay.textContent = `День ${state.day} · ${formatGameDate(state.day)}`
-    const ratio = Math.min(1, Math.max(0, state.daySeconds / DAY_DURATION_SECONDS))
-    dayProgressFill.style.width = `${Math.round(ratio * 100)}%`
-    pauseBtn.textContent = paused ? '▶' : '⏸'
-    pauseBtn.classList.toggle('active', paused)
-    for (const btn of speedBtns) btn.classList.toggle('active', !paused && timeScale === Number(btn.dataset.speed))
-    hudAtt.textContent = `Привлекательность зала: ${shopAtt}/100`
-    hudAtt.classList.toggle('good', shopAtt >= 60)
-    hudAtt.classList.toggle('mid', shopAtt >= 30 && shopAtt < 60)
-    hudAtt.classList.toggle('bad', shopAtt < 30)
-    hudVisitors.textContent = `Заказов: ${state.orders.length}`
-    hudSales.textContent = `Продаж: ${state.sales}`
-    if (performance.now() - lastFlashAt > 2500) hudFlash.classList.remove('show')
+    updateHud(state, shopAtt, timeScale, paused)
+
+    const activeEl = app.querySelector<HTMLButtonElement>('.tab-btn.active')
+    const active = (activeEl?.dataset.tab as TabName | undefined) ?? 'zal'
 
     if (state.epoch !== epoch) {
       epoch = state.epoch
-      renderZal(state)
-      renderOrders(state)
-      renderAquarium(state)
-      renderStore(state)
-      renderLog(state)
+      activeTab = active
+      checkPanels(state, true)
+    } else if (active !== activeTab) {
+      activeTab = active
+      checkPanels(state, true)
+    } else if (performance.now() - lastPanelCheck >= 250) {
+      lastPanelCheck = performance.now()
+      checkPanels(state, false)
     }
+    renderLogAppend(state)
+  }
+
+  function updateHud(state: GameState, shopAtt: number, timeScale: number, paused: boolean): void {
+    setHudText(hudMoney, `Деньги: ${state.money}₽`)
+    setHudText(hudDay, `День ${state.day} · ${formatGameDate(state.day)}`)
+    const ratio = Math.min(1, Math.max(0, state.daySeconds / DAY_DURATION_SECONDS))
+    const pct = Math.round(ratio * 100)
+    if (pct !== lastDayPct) {
+      lastDayPct = pct
+      dayProgressFill.style.width = `${pct}%`
+    }
+    if (pauseBtn.textContent !== (paused ? '▶' : '⏸')) pauseBtn.textContent = paused ? '▶' : '⏸'
+    pauseBtn.classList.toggle('active', paused)
+    for (const btn of speedBtns) btn.classList.toggle('active', !paused && timeScale === Number(btn.dataset.speed))
+    setHudText(hudAtt, `Привлекательность зала: ${shopAtt}/100`)
+    hudAtt.classList.toggle('good', shopAtt >= 60)
+    hudAtt.classList.toggle('mid', shopAtt >= 30 && shopAtt < 60)
+    hudAtt.classList.toggle('bad', shopAtt < 30)
+    setHudText(hudVisitors, `Заказов: ${state.orders.length}`)
+    setHudText(hudSales, `Продаж: ${state.sales}`)
+    if (performance.now() - lastFlashAt > 2500) hudFlash.classList.remove('show')
+  }
+
+  function setHudText(node: HTMLElement, text: string): void {
+    if (node.textContent !== text) node.textContent = text
+  }
+
+  function checkPanels(state: GameState, force: boolean): void {
+    const zf = fpZal(state)
+    if (force || zf !== lastZalFp) {
+      lastZalFp = zf
+      if (activeTab === 'zal') renderZal(state)
+    }
+    const of = fpOrders(state)
+    if (force || of !== lastOrdersFp) {
+      lastOrdersFp = of
+      if (activeTab === 'orders') renderOrders(state)
+    }
+    const af = fpAq(state)
+    if (force || af !== lastAqFp) {
+      lastAqFp = af
+      if (activeTab === 'aquarium') renderAquarium(state)
+    }
+    const sf = fpStore(state)
+    if (force || sf !== lastStoreFp) {
+      lastStoreFp = sf
+      if (activeTab === 'store') renderStore(state)
+    }
+  }
+
+  function fpZal(state: GameState): string {
+    let s = `${state.viewRoom}|racks:${state.racks.map((r) => r.id + ':' + r.roomId).join(',')}|shelves:${state.shelves.map((sh) => sh.id + ':' + sh.aquariums.length).join(',')}|money:${state.money >= STORAGE_TANK_PRICE ? 1 : 0}|racksFull:${state.racks.length * STORAGE_RACK_CAPACITY >= STORAGE_MAX_SLOTS ? 1 : 0}|filter:${storageFilter}`
+    if (state.viewRoom === 'storage') {
+      s += `|u:${storageUsed(state.shop)}/${storageCapacity(state.racks.length)}|f:${state.storage.stock.map((i) => i.speciesId + ':' + i.count).join(',')}|e:${state.shop.rackInventory.join(',')}|d:${state.shop.rackDecor.join(',')}`
+    }
+    return s
+  }
+
+  function fpOrders(state: GameState): string {
+    return state.orders.map((o) => `${o.id}:${Math.ceil(o.timeLeft)}:${o.itemType}:${o.qty}:${o.unitPrice}`).join(',')
+  }
+
+  function fpAq(state: GameState): string {
+    const all = allAquariums(state)
+    let s = all.map((a) => `${a.id}:${a.fish.length}:${a.equipment.length}:${a.decor.length}:${a.designLevel}:${shelfOfAquarium(state, a)?.id ?? ''}`).join(',')
+    const aq = all.find((a) => a.id === state.selectedAquariumId)
+    if (aq) {
+      const w = aq.water
+      const minHealth = aq.fish.length ? Math.round(Math.min(...aq.fish.map((f) => f.health)) * 100) : 0
+      s += `|sel:${aq.id}|w:${w.temperature.toFixed(1)}:${w.ph.toFixed(1)}:${w.gh.toFixed(1)}:${Math.round(w.o2)}:${Math.round(w.light)}|att:${Math.round(tankAttractiveness(aq))}|h:${minHealth}|$:${state.money >= designUpgradeCost(aq.designLevel) ? 1 : 0}`
+    }
+    return s
+  }
+
+  function fpStore(state: GameState): string {
+    const m = FISH_SPECIES.map((f) => (state.market[f.id] ?? 1).toFixed(2)).join(',')
+    const stk = state.storage.stock.map((i) => i.speciesId + ':' + i.count).join(',')
+    const shelves = state.shelves.map((sh) => `${sh.id}:${sh.aquariums.length}:${sh.aquariums.reduce((a, q) => a + q.fish.length, 0)}`).join(',')
+    return `${Math.round(state.money)}|m:${m}|stk:${stk}|inv:${state.shop.rackInventory.join(',')}|dec:${state.shop.rackDecor.join(',')}|u:${storageUsed(state.shop)}/${storageCapacity(state.racks.length)}|r:${state.racks.length}|sh:${shelves}`
+  }
+
+  function renderLogAppend(state: GameState): void {
+    const n = state.log.length
+    if (n < renderedLogCount) {
+      logList.innerHTML = ''
+      for (const e of [...state.log].reverse().slice(0, 20)) {
+        const li = el('li', `log-${e.kind}`)
+        li.append(el('span', 'log-day', `д.${e.day}`), el('span', 'log-text', e.text))
+        logList.append(li)
+      }
+      renderedLogCount = n
+      return
+    }
+    for (let i = renderedLogCount; i < n; i++) {
+      const e = state.log[i]
+      const li = el('li', `log-${e.kind}`)
+      li.append(el('span', 'log-day', `д.${e.day}`), el('span', 'log-text', e.text))
+      logList.append(li)
+    }
+    renderedLogCount = n
   }
 
   function renderZal(state: GameState): void {
@@ -1348,15 +1451,6 @@ export function buildApp(actions: UIActions) {
         card.append(storeReason('Сначала купите и разместите стойку в «Помещениях»'))
       }
       furnAq.append(card)
-    }
-  }
-
-  function renderLog(state: GameState): void {
-    logList.innerHTML = ''
-    for (const entry of [...state.log].reverse().slice(0, 20)) {
-      const li = el('li', `log-${entry.kind}`)
-      li.append(el('span', 'log-day', `д.${entry.day}`), el('span', 'log-text', entry.text))
-      logList.append(li)
     }
   }
 
