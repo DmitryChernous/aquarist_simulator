@@ -72,13 +72,6 @@ function storeReason(text: string): HTMLElement {
   return r
 }
 
-function storageObjectCard(title: string, sub: string, onClick: () => void): HTMLElement {
-  const card = el('button', 'btn storage-object')
-  card.append(el('strong', '', title), el('span', 'shop-desc', sub), el('span', 'comp-hint', 'Нажмите, чтобы открыть содержимое'))
-  card.addEventListener('click', onClick)
-  return card
-}
-
 function storageFullReason(rackCount: number, shop: ShopState): string {
   const cap = storageCapacity(rackCount)
   if (cap <= 0) return 'Нет места для хранения. Купите стеллаж в «Обустройство» → «Оснащение».'
@@ -202,9 +195,7 @@ export function buildApp(actions: UIActions) {
   const roomSwitch = app.querySelector<HTMLDivElement>('.room-switch')!
   const ordersPanel = app.querySelector<HTMLDivElement>('.orders-panel')!
 
-  const storageBlock = app.querySelector<HTMLDivElement>('#storageBlock')!
-  const stockList = app.querySelector<HTMLDivElement>('.stock-list')!
-  const rackPanel = app.querySelector<HTMLDivElement>('.rack-panel')!
+  const storagePanel = app.querySelector<HTMLDivElement>('#storagePanel')!
 
   const aquariumSelect = app.querySelector<HTMLSelectElement>('#aquariumSelect')!
   const aquariumAtt = app.querySelector<HTMLSpanElement>('#aquariumAtt')!
@@ -317,8 +308,8 @@ export function buildApp(actions: UIActions) {
     manage.addEventListener('click', () => openShelvesModal(state))
     hallActions.append(manage)
 
-    storageBlock.style.display = state.viewRoom === 'storage' ? '' : 'none'
-    if (state.viewRoom === 'storage') renderStorage(state)
+    storagePanel.style.display = state.viewRoom === 'storage' ? '' : 'none'
+    if (state.viewRoom === 'storage') renderStoragePanel(state)
   }
 
   function openShelvesModal(s: GameState): void {
@@ -920,64 +911,88 @@ export function buildApp(actions: UIActions) {
     body.append(workList)
   }
 
-  function renderStorage(state: GameState): void {
-    stockList.innerHTML = ''
-    stockList.append(el('div', 'list-title', 'Рыбы «на продажу»'))
-    const tank = state.storage
-    if (tank.stock.length === 0) stockList.append(el('div', 'empty', 'Склад пуст.'))
-    else for (const item of tank.stock) {
-      const species = SPECIES_BY_ID[item.speciesId]
-      const f = state.market[item.speciesId] ?? 1
-      const row = el('div', 'stock-row')
-      const dot = el('span', 'dot')
-      dot.style.background = species.color
-      const btn = el('button', 'btn small', `Опт — ${wholesalePrice(species, f)}₽/шт`)
-      btn.addEventListener('click', () => actions.onWholesaleSell(item.speciesId))
-      row.append(dot, el('span', 'stock-name', `${species.name} — ${item.count} шт.`), btn)
-      stockList.append(row)
-    }
+  let storageFilter = 'all'
 
-    rackPanel.innerHTML = ''
+  function renderStoragePanel(state: GameState): void {
+    storagePanel.innerHTML = ''
+    storagePanel.append(el('h2', 'sec-title', 'Склад'))
+
     const cap = storageCapacity(state.racks.length)
     const used = storageUsed(state.shop)
     const summary = el('div', 'storage-summary')
-    summary.append(el('span', 'storage-count', `Занято: ${used} из ${cap} мест · свободно ${Math.max(0, cap - used)}`))
+    summary.append(el('span', 'storage-count', `Вместимость: ${cap} мест`))
     const bar = el('div', 'storage-bar')
     const fill = el('div', 'storage-bar-fill')
     fill.style.width = `${cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0}%`
     bar.append(fill)
     summary.append(bar)
-    rackPanel.append(summary)
+    summary.append(el('span', 'storage-count', `Занято ${used} · свободно ${Math.max(0, cap - used)}`))
+    storagePanel.append(summary)
 
-    const goShop = el('button', 'btn small', 'Купить стеллаж или витрину')
-    goShop.addEventListener('click', () => {
+    const tabs = el('div', 'store-tabs')
+    for (const [key, label] of [['all', 'Все'], ['fish', 'Рыбы'], ['equip', 'Оборудование'], ['decor', 'Декор']] as const) {
+      const b = el('button', key === storageFilter ? 'seg-btn active' : 'seg-btn', label)
+      b.addEventListener('click', () => { storageFilter = key; renderStoragePanel(state) })
+      tabs.append(b)
+    }
+    storagePanel.append(tabs)
+
+    const list = el('div', 'rack-list')
+
+    if (storageFilter === 'all' || storageFilter === 'fish') {
+      const fishHead = el('div', 'list-title', 'Рыбы')
+      list.append(fishHead)
+      const tank = state.storage
+      if (tank.stock.length === 0) list.append(el('div', 'empty', 'Нет рыб на складе.'))
+      else for (const item of tank.stock) {
+        const species = SPECIES_BY_ID[item.speciesId]
+        const f = state.market[item.speciesId] ?? 1
+        const row = el('div', 'stock-row')
+        const dot = el('span', 'dot')
+        dot.style.background = species.color
+        const btn = el('button', 'btn small', `Опт — ${wholesalePrice(species, f)}₽/шт`)
+        btn.addEventListener('click', () => { actions.onWholesaleSell(item.speciesId); renderStoragePanel(state) })
+        row.append(dot, el('span', 'stock-name', `${species.name} — ${item.count} шт.`), btn)
+        list.append(row)
+      }
+    }
+
+    if (storageFilter === 'all' || storageFilter === 'equip') {
+      const eqHead = el('div', 'list-title', 'Оборудование')
+      list.append(eqHead)
+      const eq = new Map<EquipmentId, number>()
+      for (const id of state.shop.rackInventory) eq.set(id, (eq.get(id) ?? 0) + 1)
+      if (eq.size === 0) list.append(el('div', 'empty', 'Нет оборудования.'))
+      else for (const [id, count] of eq) {
+        const row = el('div', 'comp-row')
+        row.append(el('span', 'comp-name', `${EQUIPMENT[id]?.name ?? id} ×${count}`))
+        list.append(row)
+      }
+    }
+
+    if (storageFilter === 'all' || storageFilter === 'decor') {
+      const decHead = el('div', 'list-title', 'Декор')
+      list.append(decHead)
+      const dec = new Map<DecorKind, number>()
+      for (const k of state.shop.rackDecor) dec.set(k, (dec.get(k) ?? 0) + 1)
+      if (dec.size === 0) list.append(el('div', 'empty', 'Нет декора.'))
+      else for (const [kind, count] of dec) {
+        const row = el('div', 'comp-row')
+        row.append(el('span', 'comp-name', `${DECOR[kind]?.name ?? kind} ×${count}`))
+        list.append(row)
+      }
+    }
+
+    storagePanel.append(list)
+
+    const buyRack = el('button', 'btn', `Купить стеллаж — ${STORAGE_TANK_PRICE}₽ (+${STORAGE_RACK_CAPACITY} мест)`)
+    buyRack.disabled = state.money < STORAGE_TANK_PRICE || state.racks.length * STORAGE_RACK_CAPACITY >= STORAGE_MAX_SLOTS
+    buyRack.addEventListener('click', () => {
       setStoreMode('furn')
       setStoreSection('equip')
       switchTab(app, 'store')
     })
-    rackPanel.append(goShop)
-
-    const buyRack = el('button', 'btn buy', `Купить стеллаж — ${STORAGE_TANK_PRICE}₽ (+${STORAGE_RACK_CAPACITY} мест)`)
-    const racksFull = state.racks.length * STORAGE_RACK_CAPACITY >= STORAGE_MAX_SLOTS
-    buyRack.disabled = state.money < STORAGE_TANK_PRICE || racksFull
-    buyRack.addEventListener('click', () => actions.onBuyRack(state.viewRoom))
-    rackPanel.append(buyRack)
-    if (racksFull) rackPanel.append(el('div', 'store-reason', `Достигнут предел вместимости склада (${STORAGE_MAX_SLOTS} мест)`))
-    else if (state.money < STORAGE_TANK_PRICE) rackPanel.append(el('div', 'store-reason', `Не хватает денег: нужно ${STORAGE_TANK_PRICE}₽`))
-
-    const objects = el('div', 'storage-objects')
-    const racks = state.racks.length
-    const displays = furnitureCount(state.shop, 'displayRack')
-    if (racks > 0) {
-      objects.append(storageObjectCard(`Стеллаж ×${racks}`, `вместимость ${racks * STORAGE_RACK_CAPACITY} мест`, () => openStorageModal(state)))
-    }
-    if (displays > 0) {
-      objects.append(storageObjectCard(`Витрина ×${displays}`, 'показывает покупателям наличие товаров', () => openStorageModal(state)))
-    }
-    if (racks === 0 && displays === 0) {
-      objects.append(el('div', 'empty', 'Места для хранения нет. Купите стеллаж в «Обустройство» → «Оснащение».'))
-    }
-    rackPanel.append(objects)
+    storagePanel.append(buyRack)
   }
 
   let rackFilter = 'all'
@@ -1424,23 +1439,19 @@ function buildLayout(): HTMLElement {
 
   const zalTab = el('section', 'tab active')
   zalTab.id = 'tab-zal'
-  zalTab.append(
+  const zalLayout = el('div', 'zal-layout')
+  const zalMain = el('div', 'zal-main')
+  zalMain.append(
     el('h2', 'sec-title', 'Помещения'),
     el('div', 'room-switch'),
     buildHallCanvas(),
     el('h2', 'sec-title', 'Управление стойками'),
     el('div', 'hall-actions'),
   )
-
-  const storageBlock = el('div', 'storage-block')
-  storageBlock.id = 'storageBlock'
-  storageBlock.append(
-    el('h2', 'sec-title', 'Рыбы «на продажу»'),
-    el('div', 'stock-list'),
-    el('h2', 'sec-title', 'Место хранения на складе'),
-    el('div', 'rack-panel'),
-  )
-  zalTab.append(storageBlock)
+  const storagePanel = el('aside', 'storage-panel')
+  storagePanel.id = 'storagePanel'
+  zalLayout.append(zalMain, storagePanel)
+  zalTab.append(zalLayout)
 
   const ordersTab = el('section', 'tab')
   ordersTab.id = 'tab-orders'
