@@ -277,6 +277,15 @@ const ui = buildApp({
     state.selectedAquariumId = aqId
     bump()
   },
+  onRenameAquarium(aqId, name) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    const n = name.trim().slice(0, 40)
+    if (!n || n === aq.name) return
+    aq.name = n
+    pushLog(`Аквариум переименован в «${n}»`, 'info')
+    bump()
+  },
   onUpgradeDesign(aqId) {
     const aq = aquariumById(aqId)
     if (!aq || aq.designLevel >= MAX_DESIGN_LEVEL) return

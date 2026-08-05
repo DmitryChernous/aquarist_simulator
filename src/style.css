@@ -367,6 +367,19 @@ body {
   font-weight: 700;
   margin-bottom: 4px;
 }
+.aq-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.aq-name-row .aq-keys {
+  margin-bottom: 0;
+}
+.rename-input {
+  flex: 1 1 160px;
+}
 .aq-line {
   font-size: 13px;
   color: var(--text);

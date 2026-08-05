@@ -27,6 +27,7 @@ export interface UIActions {
   onBuyAquarium(modelId: string, shelfId: string, qty: number): void
   onRemoveAquarium(shelfId: string, aqId: string): void
   onSelectAquarium(aqId: string): void
+  onRenameAquarium(aqId: string, name: string): void
   onUpgradeDesign(aqId: string): void
   onWaterChange(aqId: string, key: 'temperature' | 'ph' | 'gh', value: number): void
   onSellEquipment(id: EquipmentId, aqId: string): void
@@ -534,9 +535,11 @@ export function buildApp(actions: UIActions) {
       for (const aq of shelf.aquariums) {
         const row = el('div', 'comp-row')
         row.append(el('span', 'comp-name', aq.name))
+        const ren = el('button', 'btn small', 'Переименовать')
+        ren.addEventListener('click', () => openRenameModal(aq.name, (n) => actions.onRenameAquarium(aq.id, n)))
         const btn = el('button', 'btn small', 'Переместить')
         btn.addEventListener('click', () => openAquariumMoveModal(s, aq.id))
-        row.append(btn)
+        row.append(ren, btn)
         aqList.append(row)
       }
       body.append(aqList)
@@ -703,6 +706,35 @@ export function buildApp(actions: UIActions) {
     }
   }
 
+  function openRenameModal(current: string, onSave: (name: string) => void): void {
+    const { body } = overlay('Переименовать аквариум')
+    const inp = el('input') as HTMLInputElement
+    inp.type = 'text'
+    inp.maxLength = 40
+    inp.value = current
+    inp.className = 'count-input rename-input'
+    inp.placeholder = 'Название аквариума'
+    const save = el('button', 'btn buy', 'Сохранить')
+    const apply = (): void => {
+      const n = inp.value.trim()
+      if (!n) {
+        inp.focus()
+        return
+      }
+      onSave(n)
+    }
+    save.addEventListener('click', apply)
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') apply()
+    })
+    const row = el('div', 'modal-row')
+    row.append(inp, save)
+    body.append(el('div', 'comp-hint', 'Например: «Цихлидник Южной Америки». Название видно на канвасе, в списках и в селекторе. Максимум 40 символов.'))
+    body.append(row)
+    inp.focus()
+    inp.select()
+  }
+
   function renderAquarium(state: GameState): void {
     const all = allAquariums(state)
     fillSelect(aquariumSelect, all.map((a) => {
@@ -723,7 +755,12 @@ export function buildApp(actions: UIActions) {
     const aqRoom = aqShelf ? ROOM_BY_ID[aqShelf.roomId] : null
 
     aqInfo.innerHTML = ''
-    aqInfo.append(el('div', 'aq-keys', aq.name))
+    const nameRow = el('div', 'aq-name-row')
+    nameRow.append(el('div', 'aq-keys', aq.name))
+    const renameBtn = el('button', 'btn small', 'Переименовать')
+    renameBtn.addEventListener('click', () => openRenameModal(aq.name, (n) => actions.onRenameAquarium(aq.id, n)))
+    nameRow.append(renameBtn)
+    aqInfo.append(nameRow)
     if (aqRoom && aqShelf) {
       aqInfo.append(el('div', 'aq-line loc-line', `${aqRoom.icon} Помещение: ${aqRoom.name} · Стойка: «${aqShelf.name}»`))
     }
