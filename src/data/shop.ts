@@ -74,6 +74,7 @@ export const EQUIPMENT_SLOTS_PER_RACK = 8
 export const STORAGE_TANK_PRICE = 150
 export const STORAGE_MAX_SLOTS = 500 // тестовая граница вместимости склада
 export const STORAGE_RACK_CAPACITY = 40 // вместимость одного стеллажа
+export const STOCK_BAG_DAYS = 3 // сколько дней рыба выдерживает в кислородных пакетах
 
 export const SHELVES: Record<string, import('../types').ShelfSpec> = {
   compact: {

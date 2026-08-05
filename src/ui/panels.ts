@@ -54,7 +54,7 @@ export interface UIActions {
   onMoveToStorage(aqId: string, fishId: string): void
   onFeed(aqId: string, fishId: string | null, foodId: FoodId): void
   onBuyFood(id: FoodId): void
-  onBuyFishToStorage(speciesId: string): void
+  onOrderFromSupplier(speciesId: string): void
   onWholesaleSell(speciesId: string): void
   onFulfillOrder(orderId: string): void
   onTogglePause(): void
@@ -421,7 +421,7 @@ export function buildApp(actions: UIActions) {
     const m = FISH_SPECIES.map((f) => (state.market[f.id] ?? 1).toFixed(2)).join(',')
     const stk = state.storage.stock.map((i) => i.speciesId + ':' + i.count).join(',')
     const shelves = state.shelves.map((sh) => `${sh.id}:${sh.aquariums.length}:${sh.aquariums.reduce((a, q) => a + q.fish.length, 0)}`).join(',')
-    return `${Math.round(state.money)}|m:${m}|stk:${stk}|inv:${state.shop.rackInventory.join(',')}|dec:${state.shop.rackDecor.join(',')}|u:${storageUsed(state.shop)}/${storageCapacity(state.racks.length)}|r:${state.racks.length}|sh:${shelves}`
+    return `${Math.round(state.money)}|m:${m}|stk:${stk}|inv:${state.shop.rackInventory.join(',')}|dec:${state.shop.rackDecor.join(',')}|u:${storageUsed(state.shop)}/${storageCapacity(state.racks.length)}|r:${state.racks.length}|sh:${shelves}|p:${state.purchases.length}`
   }
 
   function renderLogAppend(state: GameState): void {
@@ -1316,16 +1316,27 @@ export function buildApp(actions: UIActions) {
       list.append(fishHead)
       const tank = state.storage
       if (tank.stock.length === 0) list.append(el('div', 'empty', 'Нет рыб на складе.'))
-      else for (const item of tank.stock) {
-        const species = SPECIES_BY_ID[item.speciesId]
-        const f = state.market[item.speciesId] ?? 1
-        const row = el('div', 'stock-row')
-        const dot = el('span', 'dot')
-        dot.style.background = species.color
-        const btn = el('button', 'btn small', `Опт — ${wholesalePrice(species, f)}₽/шт`)
-        btn.addEventListener('click', () => { actions.onWholesaleSell(item.speciesId); renderRoomAside(state) })
-        row.append(dot, el('span', 'stock-name', `${species.name} — ${item.count} шт.`), btn)
-        list.append(row)
+      else {
+        const groups = new Map<string, { count: number; minDays: number }>()
+        for (const item of tank.stock) {
+          const e = groups.get(item.speciesId) ?? { count: 0, minDays: Infinity }
+          e.count += item.count
+          e.minDays = Math.min(e.minDays, item.bagDays)
+          groups.set(item.speciesId, e)
+        }
+        for (const [speciesId, g] of groups) {
+          const species = SPECIES_BY_ID[speciesId]
+          const f = state.market[speciesId] ?? 1
+          const row = el('div', 'stock-row')
+          const dot = el('span', 'dot')
+          dot.style.background = species.color
+          const btn = el('button', 'btn small', `Опт — ${wholesalePrice(species, f)}₽/шт`)
+          btn.addEventListener('click', () => { actions.onWholesaleSell(speciesId); renderRoomAside(state) })
+          row.append(dot, el('span', 'stock-name', `${species.name} — ${g.count} шт.`))
+          row.append(el('span', g.minDays <= 1 ? 'live-warn' : 'badge', g.minDays === 0 ? 'гибнет сегодня!' : `в пакетах ${g.minDays} дн.`))
+          row.append(btn)
+          list.append(row)
+        }
       }
     }
 
@@ -1654,6 +1665,28 @@ export function buildApp(actions: UIActions) {
     items.sort(cmp[fishSort] ?? cmp.name)
 
     const byGroup = fishGroup === 'family' ? 'family' : fishGroup === 'region' ? 'region' : null
+
+    if (state.purchases.length > 0) {
+      const pending = new Map<string, { qty: number; day: number }>()
+      for (const p of state.purchases) {
+        const e = pending.get(p.speciesId) ?? { qty: 0, day: Infinity }
+        e.qty += p.qty
+        e.day = Math.min(e.day, p.arriveDay)
+        pending.set(p.speciesId, e)
+      }
+      const block = el('div', 'purchases-block')
+      block.append(el('div', 'list-title', 'В пути от поставщика'))
+      for (const [sid, e] of pending) {
+        const species = SPECIES_BY_ID[sid]
+        const row = el('div', 'comp-row')
+        const dot = el('span', 'dot')
+        dot.style.background = species.color
+        row.append(dot, el('span', 'comp-name', `${species.name} ×${e.qty}`), el('span', 'badge', `День ${e.day}`))
+        block.append(row)
+      }
+      storeGrid.prepend(block)
+    }
+
     let lastKey: string | null = null
     for (const { species, factor } of items) {
       const key = byGroup ? species[byGroup] : null
@@ -1685,12 +1718,15 @@ export function buildApp(actions: UIActions) {
         el('span', 'sell-hint', `Розница ${retailPrice(species, factor)}₽ · опт ${wholesalePrice(species, factor)}₽`),
       )
       card.append(priceRow)
-      const buyBtn = el('button', 'btn buy', `Купить на склад — ${buyPrice(species, factor)}₽`)
+      const buyBtn = el('button', 'btn buy', `Заказать у поставщика — ${buyPrice(species, factor)}₽`)
       const noMoney = state.money < buyPrice(species, factor)
       buyBtn.disabled = noMoney
-      buyBtn.addEventListener('click', () => actions.onBuyFishToStorage(species.id))
+      buyBtn.title = 'Оплата сейчас, рыба прибудет на склад в пакетах на следующий день'
+      buyBtn.addEventListener('click', () => actions.onOrderFromSupplier(species.id))
       card.append(buyBtn)
       if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${buyPrice(species, factor)}₽`))
+      const inTransit = state.purchases.filter((p) => p.speciesId === species.id).reduce((a, p) => a + p.qty, 0)
+      if (inTransit > 0) card.append(el('div', 'feed-ok', `В пути: ${inTransit} · День ${Math.min(...state.purchases.filter((p) => p.speciesId === species.id).map((p) => p.arriveDay))}`))
       storeGrid.append(card)
     }
     if (items.length === 0) storeGrid.append(el('div', 'store-empty', 'Ничего не найдено'))

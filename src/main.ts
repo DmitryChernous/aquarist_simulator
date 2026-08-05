@@ -2,13 +2,13 @@ import './style.css'
 import { VERSION } from './version'
 import { SPECIES_BY_ID } from './data/fish'
 import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from './data/aquarium'
-import { EQUIPMENT, SHELVES, STORAGE_MAX_SLOTS, STORAGE_RACK_CAPACITY, STORAGE_TANK_PRICE, storageCapacity, storageUsed } from './data/shop'
+import { EQUIPMENT, SHELVES, STOCK_BAG_DAYS, STORAGE_MAX_SLOTS, STORAGE_RACK_CAPACITY, STORAGE_TANK_PRICE, storageCapacity, storageUsed } from './data/shop'
 import { DECOR } from './data/decor'
 import { FOOD } from './data/food'
 import { FURNITURE } from './data/furniture'
 import { ROOM_BY_ID } from './data/rooms'
 import { DAY_DURATION_SECONDS } from './timing'
-import { allAquariums, canStock, fitAquariums, recalcWater, tickWater, usedVolume } from './sim/aquarium'
+import { allAquariums, canStock, fitAquariums, freeStockSpace, recalcWater, tickWater, usedVolume } from './sim/aquarium'
 import { updateHealth, feedFish } from './sim/health'
 import { canEatFood, liveShelfDays } from './sim/food'
 import { availableStock, buyPrice, dailyUpkeep, wholesalePrice } from './sim/economy'
@@ -17,7 +17,7 @@ import { clearSave, loadState, saveState } from './save'
 import { renderAquarium } from './ui/render'
 import { drawHall, layoutCashRegister, layoutFurniture, layoutHall, layoutStorageObjects, HALL_HEIGHT, HALL_WIDTH, ROOM_SHELF_CELL_CAPACITY, roomShelvesTotalCells, shelfCellSize } from './ui/renderHall'
 import { buildApp } from './ui/panels'
-import type { AquariumState, DecorKind, EquipmentId, FishInstance, FishSpecies, FurnitureId, GameState, LogKind, Order, ShelfState, TankState } from './types'
+import type { AquariumState, DecorKind, EquipmentId, FishInstance, FishSpecies, FurnitureId, GameState, LogKind, Order, PurchaseOrder, ShelfState, TankState } from './types'
 
 const TANK = { width: 960, height: 420 }
 const LOG_LIMIT = 40
@@ -60,21 +60,20 @@ function shelfAquariumNum(shelfId: string): number {
 }
 
 function addStock(stock: TankState['stock'], speciesId: string, count: number): void {
-  const item = stock.find((s) => s.speciesId === speciesId)
-  if (item) item.count += count
-  else stock.push({ speciesId, count })
+  stock.push({ speciesId, count, bagDays: STOCK_BAG_DAYS })
 }
 
 function takeStock(speciesId: string, n: number): number {
   let need = n
-  const stock = state.storage.stock
-  const item = stock.find((s) => s.speciesId === speciesId)
-  if (item && item.count > 0) {
-    const take = Math.min(item.count, need)
-    item.count -= take
+  // Берём в первую очередь старейшие партии (у них меньше дней в пакетах).
+  const batches = state.storage.stock.filter((s) => s.speciesId === speciesId && s.count > 0).sort((a, b) => a.bagDays - b.bagDays)
+  for (const batch of batches) {
+    if (need <= 0) break
+    const take = Math.min(batch.count, need)
+    batch.count -= take
     need -= take
-    if (item.count <= 0) state.storage.stock = stock.filter((s) => s.speciesId !== speciesId)
   }
+  state.storage.stock = state.storage.stock.filter((s) => s.count > 0)
   return n - need
 }
 
@@ -557,27 +556,33 @@ onInstallEquipment(id, aqId) {
     }
     bump()
   },
-  onBuyFishToStorage(speciesId) {
+  onOrderFromSupplier(speciesId) {
     const species = SPECIES_BY_ID[speciesId]
     const price = buyPrice(species, state.market[speciesId] ?? 1)
     if (state.money < price) {
       ui.flash('Не хватает денег!')
       return
     }
+    if (freeStockSpace(state, species) < 1) {
+      ui.flash('Нет места в аквариумах, чтобы принять рыбу! Освободите ёмкость или продайте рыб.')
+      return
+    }
     state.money -= price
-    addStock(state.storage.stock, speciesId, 1)
-    pushLog(`Куплена ${species.name} за ${price}₽ на склад`, 'buy')
+    const order: PurchaseOrder = { id: uid('p'), speciesId, qty: 1, arriveDay: state.day + 1 }
+    state.purchases.push(order)
+    pushLog(`Заказана ${species.name} у поставщика за ${price}₽ — прибудет на склад завтра`, 'buy')
     bump()
   },
   onWholesaleSell(speciesId) {
-    const item = state.storage.stock.find((s) => s.speciesId === speciesId)
-    if (!item || item.count <= 0) return
+    let total = 0
+    for (const s of state.storage.stock) if (s.speciesId === speciesId) total += s.count
+    if (total <= 0) return
     const species = SPECIES_BY_ID[speciesId]
-    const revenue = wholesalePrice(species, state.market[speciesId] ?? 1) * item.count
+    const revenue = wholesalePrice(species, state.market[speciesId] ?? 1) * total
     state.money += revenue
-    state.sales += item.count
+    state.sales += total
     state.storage.stock = state.storage.stock.filter((s) => s.speciesId !== speciesId)
-    pushLog(`Оптовая продажа ${item.count} × ${species.name} за ${revenue}₽`, 'sell')
+    pushLog(`Оптовая продажа ${total} × ${species.name} за ${revenue}₽`, 'sell')
     bump()
   },
   onFulfillOrder(orderId) {
@@ -783,11 +788,48 @@ function advanceFoodSpoilage(): void {
   }
 }
 
+function settlePurchases(): void {
+  if (state.purchases.length === 0) return
+  const arrived: PurchaseOrder[] = []
+  state.purchases = state.purchases.filter((p) => {
+    if (p.arriveDay <= state.day) {
+      arrived.push(p)
+      return false
+    }
+    return true
+  })
+  if (arrived.length === 0) return
+  let total = 0
+  const names = new Map<string, number>()
+  for (const p of arrived) {
+    addStock(state.storage.stock, p.speciesId, p.qty)
+    names.set(p.speciesId, (names.get(p.speciesId) ?? 0) + p.qty)
+    total += p.qty
+  }
+  const list = [...names.entries()].map(([sid, c]) => `${SPECIES_BY_ID[sid].name} ×${c}`).join(', ')
+  pushLog(`Поставка прибыла: ${list} (в пакетах — ${STOCK_BAG_DAYS} дн. на пересадку)`, 'info')
+  ui.flash(`Поставка прибыла: ${total} ${total === 1 ? 'рыба' : 'рыб'} на складе`)
+}
+
+function advanceBags(): void {
+  for (const s of state.storage.stock) s.bagDays -= 1
+  const died = new Map<string, number>()
+  for (const s of state.storage.stock) if (s.bagDays <= 0) died.set(s.speciesId, (died.get(s.speciesId) ?? 0) + s.count)
+  if (died.size > 0) {
+    state.storage.stock = state.storage.stock.filter((s) => s.bagDays > 0)
+    const list = [...died.entries()].map(([sid, c]) => `${SPECIES_BY_ID[sid].name} — ${c}`).join(', ')
+    pushLog(`Рыба погибла в пакетах (не пересажена): ${list}`, 'warn')
+    ui.flash('Рыба погибла в пакетах — не успели пересадить!')
+  }
+}
+
 function advanceDay(): void {
   state.day += 1
   state.daySeconds = 0
   updateMarket(state)
+  settlePurchases()
   advanceFoodSpoilage()
+  advanceBags()
   const cost = dailyUpkeep(state, SPECIES_BY_ID)
   state.money -= cost
   pushLog(`День ${state.day}: рынок изменился, аренда и содержание −${cost}₽`, 'money')

@@ -217,6 +217,15 @@ export interface TankState {
 export interface StockItem {
   speciesId: string
   count: number
+  bagDays: number // сколько дней рыба может пробыть в кислородных пакетах (0 — гибнет)
+}
+
+// Заказ у поставщика: рыба приезжает на склад в пакетах на следующий день.
+export interface PurchaseOrder {
+  id: string
+  speciesId: string
+  qty: number
+  arriveDay: number // день, в который поставка прибывает
 }
 
 export interface FishInstance {
@@ -296,6 +305,7 @@ export interface GameState {
   storage: TankState // единственный склад
   market: Record<string, number>
   orders: Order[]
+  purchases: PurchaseOrder[] // заказы у поставщика (прибывают на следующий день)
   selectedAquariumId: string | null
   viewRoom: RoomId
   day: number

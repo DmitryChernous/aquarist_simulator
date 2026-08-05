@@ -1,7 +1,7 @@
-import type { AquariumState, FurnitureId, GameState, RoomId, TankState } from './types'
+import type { AquariumState, FurnitureId, GameState, RoomId, StockItem, TankState } from './types'
 import { FISH_SPECIES } from './data/fish'
 import { AQUARIUM_MODELS } from './data/aquarium'
-import { EQUIPMENT } from './data/shop'
+import { EQUIPMENT, STOCK_BAG_DAYS } from './data/shop'
 import { FURNITURE } from './data/furniture'
 
 const KEY = 'aquarist-save-v4'
@@ -75,6 +75,7 @@ export function defaultState(): GameState {
     storage: { id: 's1', name: 'Склад 1', kind: 'storage', stock: [] },
     market: Object.fromEntries(FISH_SPECIES.map((s) => [s.id, 1])),
     orders: [],
+    purchases: [],
     selectedAquariumId: 'a1',
     viewRoom: 'hall',
     day: 1,
@@ -117,7 +118,7 @@ function migrateStorageTanks(tanks: any[]): TankState[] {
       name: String(t.name || `Склад ${i + 1}`),
       kind: 'storage' as const,
       stock: Array.isArray(t.stock)
-        ? t.stock.map((s: any) => ({ speciesId: String(s.speciesId), count: Number(s.count ?? 0) }))
+        ? t.stock.map((s: any) => ({ speciesId: String(s.speciesId), count: Number(s.count ?? 0), bagDays: STOCK_BAG_DAYS }))
         : [],
     }))
 }
@@ -125,16 +126,25 @@ function migrateStorageTanks(tanks: any[]): TankState[] {
 // Сливает старое хранение (массив складов) в единственный склад.
 function normalizeStorage(parsed: any, base: TankState): TankState {
   const list = Array.isArray(parsed) ? parsed : parsed && typeof parsed === 'object' ? [parsed] : []
-  const stock: { speciesId: string; count: number }[] = []
+  const stock: StockItem[] = []
+  const legacy: { speciesId: string; count: number }[] = []
   for (const t of list) {
     if (!t || !Array.isArray(t.stock)) continue
     for (const it of t.stock) {
       if (!it || typeof it.speciesId !== 'string') continue
-      const ex = stock.find((s) => s.speciesId === it.speciesId)
-      if (ex) ex.count += Number(it.count ?? 0)
-      else stock.push({ speciesId: it.speciesId, count: Number(it.count ?? 0) })
+      const count = Number(it.count ?? 0)
+      if (count <= 0) continue
+      if (typeof it.bagDays === 'number') {
+        // современные партии сохраняем как есть (новая запись, свежесть каждой партии)
+        stock.push({ speciesId: it.speciesId, count, bagDays: Math.min(STOCK_BAG_DAYS, Math.max(0, Number(it.bagDays))) })
+      } else {
+        const ex = legacy.find((s) => s.speciesId === it.speciesId)
+        if (ex) ex.count += count
+        else legacy.push({ speciesId: it.speciesId, count })
+      }
     }
   }
+  for (const l of legacy) stock.push({ speciesId: l.speciesId, count: l.count, bagDays: STOCK_BAG_DAYS })
   return { ...base, stock: stock.filter((s) => s.count > 0) }
 }
 
@@ -243,7 +253,7 @@ export function loadState(): GameState {
             aquariums,
           },
         ],
-        storage: { id: 's1', name: 'Склад 1', kind: 'storage', stock: mergedStock },
+        storage: { id: 's1', name: 'Склад 1', kind: 'storage', stock: mergedStock.map((m) => ({ ...m, bagDays: STOCK_BAG_DAYS })) },
         selectedAquariumId: aquariums[0]?.id ?? null,
         viewRoom: 'hall',
           day: Number.isFinite(Number(old.day)) && Number(old.day) > 0 ? Number(old.day) : 1,

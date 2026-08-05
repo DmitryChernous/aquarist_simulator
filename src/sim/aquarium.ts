@@ -87,6 +87,13 @@ export function canStock(aq: AquariumState, species: FishSpecies, _n: number): n
   return Math.max(0, Math.floor(left / species.minVolume))
 }
 
+// Свободная ёмкость по всем аквариумам для заданного вида — сколько рыб можно принять.
+export function freeStockSpace(state: GameState, species: FishSpecies): number {
+  let n = 0
+  for (const aq of allAquariums(state)) n += canStock(aq, species, Number.MAX_SAFE_INTEGER)
+  return n
+}
+
 export function plantCount(aq: AquariumState): number {
   return aq.decor.filter((d) => d.kind === 'plant').length
 }
