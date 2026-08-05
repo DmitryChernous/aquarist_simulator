@@ -221,6 +221,25 @@ export function buildApp(actions: UIActions) {
   pauseBtn.addEventListener('click', () => actions.onTogglePause())
   for (const btn of speedBtns) btn.addEventListener('click', () => actions.onSetSpeed(Number(btn.dataset.speed)))
   aquariumSelect.addEventListener('change', () => actions.onSelectAquarium(aquariumSelect.value))
+  let latestState: GameState = null as unknown as GameState
+
+  let activeStoreMode: 'sale' | 'furn' = 'sale'
+  let activeStoreSection = 'fish'
+  let storeSearch = ''
+  let fishFamilyFilter = 'all'
+  let fishRegionFilter = 'all'
+  let fishGroup: 'none' | 'family' | 'region' = 'none'
+  let fishSort = 'name'
+  let decorGroupFilter = 'all'
+  let decorSort = 'price'
+  let equipCatFilter = 'all'
+  let equipSort = 'price'
+  let furnSort = 'price'
+
+  const EQUIP_CATEGORY_LABEL: Record<string, string> = {
+    filter: 'Фильтры', pump: 'Помпы', light: 'Лампы', heater: 'Нагреватели', co2: 'Углекислый газ', measure: 'Измерение',
+  }
+
   function setStoreSection(v: 'fish' | 'decor' | 'equip'): void {
     activeStoreMode = 'sale'
     activeStoreSection = v
@@ -259,7 +278,6 @@ export function buildApp(actions: UIActions) {
 
   let epoch = -1
   let lastFlashAt = 0
-  let latestState: GameState = null as unknown as GameState
 
   let activeTab: TabName = 'zal'
   let lastZalFp = ''
@@ -269,23 +287,6 @@ export function buildApp(actions: UIActions) {
   let lastPanelCheck = 0
   let lastDayPct = -1
   let renderedLogCount = 0
-
-  let activeStoreMode: 'sale' | 'furn' = 'sale'
-  let activeStoreSection = 'fish'
-  let storeSearch = ''
-  let fishFamilyFilter = 'all'
-  let fishRegionFilter = 'all'
-  let fishGroup: 'none' | 'family' | 'region' = 'none'
-  let fishSort = 'name'
-  let decorGroupFilter = 'all'
-  let decorSort = 'price'
-  let equipCatFilter = 'all'
-  let equipSort = 'price'
-  let furnSort = 'price'
-
-  const EQUIP_CATEGORY_LABEL: Record<string, string> = {
-    filter: 'Фильтры', pump: 'Помпы', light: 'Лампы', heater: 'Нагреватели', co2: 'Углекислый газ', measure: 'Измерение',
-  }
 
   function flash(message: string): void {
     hudFlash.textContent = message
