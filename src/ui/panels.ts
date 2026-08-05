@@ -1738,7 +1738,6 @@ function buildLayout(): HTMLElement {
   const roomLayout = el('div', 'room-layout')
   const roomStage = el('div', 'room-stage')
   roomStage.append(
-    el('h2', 'sec-title', 'Помещения'),
     el('div', 'room-switch'),
     buildHallCanvas(),
     el('h2', 'sec-title', 'Управление стойками'),
@@ -1751,7 +1750,6 @@ function buildLayout(): HTMLElement {
   const ordersTab = el('section', 'tab')
   ordersTab.id = 'tab-orders'
   ordersTab.append(
-    el('h2', 'sec-title', 'Заказы покупателей'),
     el('div', 'orders-panel'),
   )
 
