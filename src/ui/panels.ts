@@ -302,7 +302,7 @@ export function buildApp(actions: UIActions) {
   setupTabs(app)
 
   let epoch = -1
-  let lastFlashAt = 0
+  let flashTimer = 0
 
   let activeTab: TabName = 'zal'
   let lastZalFp = ''
@@ -316,7 +316,8 @@ export function buildApp(actions: UIActions) {
   function flash(message: string): void {
     hudFlash.textContent = message
     hudFlash.classList.add('show')
-    lastFlashAt = performance.now()
+    clearTimeout(flashTimer)
+    flashTimer = window.setTimeout(() => hudFlash.classList.remove('show'), 2600)
   }
 
   function update(state: GameState, shopAtt: number, timeScale: number, paused: boolean): void {
@@ -358,7 +359,6 @@ export function buildApp(actions: UIActions) {
     hudAtt.classList.toggle('bad', shopAtt < 30)
     setHudText(hudVisitors, `Заказов: ${state.orders.length}`)
     setHudText(hudSales, `Продаж: ${state.sales}`)
-    if (performance.now() - lastFlashAt > 2500) hudFlash.classList.remove('show')
   }
 
   function setHudText(node: HTMLElement, text: string): void {
@@ -2009,7 +2009,6 @@ function buildLayout(): HTMLElement {
     el('span', 'hud-sales', 'Продаж: —'),
   )
   const right = el('div', 'hud-right')
-  right.append(el('span', 'hud-flash', ''))
   const timeControl = el('div', 'time-control')
   timeControl.append(el('button', 'btn small btn-pause', '⏸'))
   for (const speed of [1, 2, 3, 5]) {
@@ -2127,6 +2126,6 @@ function buildLayout(): HTMLElement {
   footer.append(footHead)
   footer.append(el('ul', 'log-list'))
 
-  game.append(header, nav, main, footer)
+  game.append(header, nav, main, footer, el('div', 'hud-flash'))
   return game
 }
