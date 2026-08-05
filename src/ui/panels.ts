@@ -248,6 +248,8 @@ export function buildApp(actions: UIActions) {
   let editFocusPending = false
   let editSelStart = 0
   let editSelEnd = 0
+  let editInput: HTMLInputElement | null = null
+  let aqNameBox: HTMLElement | null = null
 
   function setStoreSection(v: 'fish' | 'decor' | 'equip'): void {
     activeStoreMode = 'sale'
@@ -713,6 +715,7 @@ export function buildApp(actions: UIActions) {
   }
 
   function renderAqNameRow(container: HTMLElement, aq: AquariumState): void {
+    if (editAqId === aq.id && editInput && container.contains(editInput)) return
     const wasFocused = container.contains(document.activeElement)
     container.innerHTML = ''
     if (editAqId === aq.id) {
@@ -721,16 +724,18 @@ export function buildApp(actions: UIActions) {
       inp.maxLength = 40
       inp.className = 'rename-inline'
       inp.value = editDraft
-      const save = (): void => {
-        const n = editDraft.trim()
-        if (n && n !== aq.name) actions.onRenameAquarium(aq.id, n)
+      editInput = inp
+      const finish = (canceled: boolean): void => {
+        if (!canceled) {
+          const n = editDraft.trim()
+          if (n && n !== aq.name) actions.onRenameAquarium(aq.id, n)
+        }
         editAqId = null
+        editInput = null
         renderAqNameRow(container, aq)
       }
-      const cancel = (): void => {
-        editAqId = null
-        renderAqNameRow(container, aq)
-      }
+      const save = (): void => finish(false)
+      const cancel = (): void => finish(true)
       inp.addEventListener('input', () => {
         editDraft = inp.value
         editSelStart = inp.selectionStart ?? inp.value.length
@@ -759,6 +764,7 @@ export function buildApp(actions: UIActions) {
       }
       return
     }
+    editInput = null
     const nameRow = el('div', 'aq-name-row')
     nameRow.append(el('div', 'aq-keys', aq.name))
     const editBtn = el('button', 'icon-btn', '✎')
@@ -813,17 +819,28 @@ export function buildApp(actions: UIActions) {
     const aq = all.find((a) => a.id === state.selectedAquariumId)
     if (!aq) {
       aquariumAtt.textContent = 'Аквариум не выбран'
+      editAqId = null
       aqInfo.innerHTML = ''
       aqActions.innerHTML = ''
       return
+    }
+    if (editAqId && aq.id !== editAqId) {
+      editAqId = null
+      editInput = null
     }
     aquariumAtt.textContent = `Привлекательность: ${tankAttractiveness(aq)}/100`
 
     const aqShelf = shelfOfAquarium(state, aq)
     const aqRoom = aqShelf ? ROOM_BY_ID[aqShelf.roomId] : null
 
-    aqInfo.innerHTML = ''
-    renderAqNameRow(aqInfo, aq)
+    if (!aqNameBox) {
+      aqNameBox = el('div', 'aq-name-box')
+      aqInfo.prepend(aqNameBox)
+    } else if (aqNameBox.parentNode !== aqInfo) {
+      aqInfo.prepend(aqNameBox)
+    }
+    renderAqNameRow(aqNameBox, aq)
+    while (aqInfo.lastChild && aqInfo.lastChild !== aqNameBox) aqInfo.removeChild(aqInfo.lastChild)
     if (aqRoom && aqShelf) {
       aqInfo.append(el('div', 'aq-line loc-line', `${aqRoom.icon} Помещение: ${aqRoom.name} · Стойка: «${aqShelf.name}»`))
     }
