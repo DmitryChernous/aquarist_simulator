@@ -541,8 +541,10 @@ onInstallEquipment(id, aqId) {
     }
     state.money -= def.price
     const entry = state.shop.foodStock.find((f) => f.id === id)
-    if (entry) entry.count += def.jarPortions
-    else state.shop.foodStock.push({ id, count: def.jarPortions, storedDays: 0 })
+    if (entry) {
+      entry.count += def.jarPortions
+      if (def.kind === 'live') entry.storedDays = 0 // свежая партия
+    } else state.shop.foodStock.push({ id, count: def.jarPortions, storedDays: 0 })
     pushLog(`Куплен корм «${def.name}» за ${def.price}₽ (${def.jarPortions} порций)`, 'buy')
     bump()
   },
@@ -747,20 +749,24 @@ function tick(dt: number): void {
 }
 
 function advanceFoodSpoilage(): void {
-  let lost = 0
+  const spoiled = new Map<string, number>()
   for (const f of state.shop.foodStock) {
     const def = FOOD[f.id]
-    if (def && def.kind === 'live') f.storedDays += 1
+    if (!def || def.kind !== 'live') continue
+    f.storedDays += 1
+    if (def.shelfLifeDays != null && f.storedDays >= def.shelfLifeDays) {
+      spoiled.set(def.name, (spoiled.get(def.name) ?? 0) + f.count)
+    }
   }
   state.shop.foodStock = state.shop.foodStock.filter((f) => {
     const def = FOOD[f.id]
-    if (def && def.kind === 'live' && def.shelfLifeDays != null && f.storedDays >= def.shelfLifeDays) {
-      lost += f.count
-      return false
-    }
-    return true
+    return !(def && def.kind === 'live' && def.shelfLifeDays != null && f.storedDays >= def.shelfLifeDays)
   })
-  if (lost > 0) pushLog(`${lost} порций живого корма испортились на складе`, 'warn')
+  if (spoiled.size > 0) {
+    const list = [...spoiled.entries()].map(([name, c]) => `${name} — ${c} порц.`).join(', ')
+    pushLog(`Испортился живой корм: ${list}`, 'warn')
+    ui.flash('Живой корм испортился на складе!')
+  }
 }
 
 function advanceDay(): void {
