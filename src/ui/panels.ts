@@ -5,7 +5,7 @@ import { EQUIPMENT, EQUIPMENT_IDS, SHELVES, STORAGE_MAX_SLOTS, STORAGE_RACK_CAPA
 import { DECOR, DECOR_KINDS } from '../data/decor'
 import { ROOMS, ROOM_BY_ID } from '../data/rooms'
 import { FURNITURE, FURNITURE_IDS, furnitureCount } from '../data/furniture'
-import { HALL_HEIGHT, HALL_WIDTH } from './renderHall'
+import { HALL_HEIGHT, HALL_WIDTH, ROOM_SHELF_CELL_CAPACITY, roomShelvesTotalCells, shelfCellSize } from './renderHall'
 import { shopAttractiveness, tankAttractiveness } from '../sim/buyers'
 import { availableStock, buyPrice, decorStock, equipmentStock, retailPrice, wholesalePrice } from '../sim/economy'
 import { canStock, maxFitOnShelf, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
@@ -84,7 +84,7 @@ function allAquariums(state: GameState): AquariumState[] {
   return out
 }
 
-function fillSelect(select: HTMLSelectElement, options: { value: string; label: string }[], current: string | null): void {
+function fillSelect(select: HTMLSelectElement, options: { value: string; label: string }[], current: string | null, preferCurrent = false): void {
   const prev = select.dataset.prevValue ?? (select.value || current || options[0]?.value || '')
   select.innerHTML = ''
   for (const opt of options) {
@@ -93,8 +93,10 @@ function fillSelect(select: HTMLSelectElement, options: { value: string; label: 
     o.textContent = opt.label
     select.append(o)
   }
-  if (options.some((o) => o.value === prev)) select.value = prev
-  else if (options.length) select.value = options[0].value
+  const target = preferCurrent
+    ? (options.some((o) => o.value === current) ? current : options[0]?.value ?? '')
+    : (options.some((o) => o.value === prev) ? prev : options[0]?.value ?? '')
+  if (target) select.value = target
   select.dataset.prevValue = select.value
 }
 
@@ -707,7 +709,7 @@ export function buildApp(actions: UIActions) {
       const sh = shelfOfAquarium(state, a)
       const label = sh ? `${ROOM_BY_ID[sh.roomId].icon} ${ROOM_BY_ID[sh.roomId].name} · ${sh.name} · ${a.name}` : a.name
       return { value: a.id, label }
-    }), state.selectedAquariumId)
+    }), state.selectedAquariumId, true)
     const aq = all.find((a) => a.id === state.selectedAquariumId)
     if (!aq) {
       aquariumAtt.textContent = 'Аквариум не выбран'
@@ -857,8 +859,16 @@ export function buildApp(actions: UIActions) {
   function openInhabitantsModal(s: GameState, aqId: string): void {
     const aq = allAquariums(s).find((a) => a.id === aqId)
     if (!aq) return
-    const { body } = overlay(`Обитатели: «${aq.name}»`)
+    const { body, close } = overlay(`Обитатели: «${aq.name}»`)
 
+    const goStore = el('button', 'btn buy', 'Купить рыб в магазине →')
+    goStore.addEventListener('click', () => {
+      close()
+      switchTab(app, 'store')
+      setStoreMode('sale')
+      setStoreSection('fish')
+    })
+    body.append(goStore)
     body.append(el('div', 'list-title', 'Заселить со склада'))
     const stockById = new Map<string, number>()
     for (const item of s.storage.stock) stockById.set(item.speciesId, (stockById.get(item.speciesId) ?? 0) + item.count)
@@ -1057,8 +1067,9 @@ export function buildApp(actions: UIActions) {
     const aquariums = shelves.reduce((a, s) => a + s.aquariums.length, 0)
     const fish = shelves.reduce((a, s) => a + s.aquariums.reduce((b, q) => b + q.fish.length, 0), 0)
     const furn = state.shop.furniture
+    const usedCells = roomShelvesTotalCells(state.shelves.filter((s) => s.roomId === state.viewRoom))
     const lines: [string, string][] = [
-      ['Стоек', String(shelves.length)],
+      ['Стоек', `${shelves.length} (ячейки ${usedCells}/${ROOM_SHELF_CELL_CAPACITY})`],
       ['Аквариумов', String(aquariums)],
       ['Рыб', String(fish)],
       ['Привлекательность', `${shopAttractiveness(state)}/100`],
@@ -1538,16 +1549,18 @@ export function buildApp(actions: UIActions) {
     if (ids.length === 0) equipStore.append(el('div', 'store-empty', 'Ничего не найдено'))
   }
 
-  function openBuyRoomModal(title: string, action: (roomId: RoomId) => void): void {
+  function openBuyRoomModal(title: string, action: (roomId: RoomId) => void, canPlaceIn?: (roomId: RoomId) => boolean): void {
     const { body, close } = overlay(title)
     body.append(el('div', 'comp-hint', 'Выберите помещение, где разместить объект:'))
     for (const r of ROOMS) {
+      const fits = canPlaceIn ? canPlaceIn(r.id) : true
       const row = el('div', 'modal-row')
-      const btn = el('button', 'btn small', 'Разместить здесь')
+      const btn = el('button', 'btn small', fits ? 'Разместить здесь' : 'Нет места')
+      btn.disabled = !fits
       btn.addEventListener('click', () => { action(r.id); close() })
       row.append(
         el('strong', '', `${r.icon} ${r.name}`),
-        el('span', 'shop-desc', r.desc),
+        el('span', 'shop-desc', fits ? r.desc : `${r.desc} · помещение заполнено`),
         btn,
       )
       body.append(row)
@@ -1567,7 +1580,10 @@ export function buildApp(actions: UIActions) {
       const btn = el('button', 'btn buy', `Купить и разместить — ${spec.price}₽`)
       const noMoney = state.money < spec.price
       btn.disabled = noMoney
-      btn.addEventListener('click', () => openBuyRoomModal(`Купить стойку «${spec.name}»`, (roomId) => actions.onBuyShelf(specId, roomId)))
+      btn.addEventListener('click', () => openBuyRoomModal(`Купить стойку «${spec.name}»`, (roomId) => actions.onBuyShelf(specId, roomId), (roomId) => {
+        const inRoom = state.shelves.filter((x) => x.roomId === roomId)
+        return roomShelvesTotalCells(inRoom) + (inRoom.length ? 1 : 0) + shelfCellSize(spec) <= ROOM_SHELF_CELL_CAPACITY
+      }))
       card.append(btn)
       if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${spec.price}₽`))
       furnShelves.append(card)

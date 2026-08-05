@@ -13,7 +13,7 @@ import { availableStock, buyPrice, dailyUpkeep, wholesalePrice } from './sim/eco
 import { arrivalInterval, generateOrder, shopAttractiveness, updateMarket } from './sim/buyers'
 import { clearSave, loadState, saveState } from './save'
 import { renderAquarium } from './ui/render'
-import { drawHall, layoutFurniture, layoutHall, layoutStorageObjects, HALL_HEIGHT, HALL_WIDTH } from './ui/renderHall'
+import { drawHall, layoutFurniture, layoutHall, layoutStorageObjects, HALL_HEIGHT, HALL_WIDTH, ROOM_SHELF_CELL_CAPACITY, roomShelvesTotalCells, shelfCellSize } from './ui/renderHall'
 import { buildApp } from './ui/panels'
 import type { AquariumState, DecorKind, EquipmentId, FishInstance, FishSpecies, FurnitureId, GameState, LogKind, Order, ShelfState, TankState } from './types'
 
@@ -122,6 +122,12 @@ const ui = buildApp({
       ui.flash('Не хватает денег!')
       return
     }
+    const inRoom = state.shelves.filter((s) => s.roomId === roomId)
+    const nextCells = roomShelvesTotalCells(inRoom) + (inRoom.length ? 1 : 0) + shelfCellSize(spec)
+    if (nextCells > ROOM_SHELF_CELL_CAPACITY) {
+      ui.flash(`В «${ROOM_BY_ID[roomId].name}» больше нет места для стойки!`)
+      return
+    }
     state.money -= spec.price
     const id = uid('sh')
     const name = `Стойка ${state.shelves.length + 1}`
@@ -148,6 +154,12 @@ const ui = buildApp({
   onMoveShelf(shelfId, roomId) {
     const shelf = state.shelves.find((s) => s.id === shelfId)
     if (!shelf || shelf.roomId === roomId) return
+    const inTarget = state.shelves.filter((s) => s.roomId === roomId && s.id !== shelfId)
+    const nextCells = roomShelvesTotalCells(inTarget) + (inTarget.length ? 1 : 0) + shelfCellSize(shelf)
+    if (nextCells > ROOM_SHELF_CELL_CAPACITY) {
+      ui.flash(`В «${ROOM_BY_ID[roomId].name}» нет места для этой стойки!`)
+      return
+    }
     const from = ROOM_BY_ID[shelf.roomId].name
     shelf.roomId = roomId
     state.viewRoom = roomId
@@ -241,8 +253,12 @@ const ui = buildApp({
       return
     }
     state.money -= total
-    const created = placements.map((p) => newAquarium(shelfId, p.slabId, modelId, p.x))
-    shelf.aquariums.push(...created)
+    const created: AquariumState[] = []
+    for (const p of placements) {
+      const aq = newAquarium(shelfId, p.slabId, modelId, p.x)
+      shelf.aquariums.push(aq)
+      created.push(aq)
+    }
     state.selectedAquariumId = created[0].id
     pushLog(`Куплено ${created.length} × «${model.name}» на стойку «${shelf.name}» за ${total}₽`, 'buy')
     bump()

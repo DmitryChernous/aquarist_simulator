@@ -1,11 +1,25 @@
 import type { FurnitureId, GameState } from '../types'
 import { SPECIES_BY_ID } from '../data/fish'
 import { shelfUsedLiters, storageCapacity, storageUsed } from '../data/shop'
-import { ROOM_BY_ID } from '../data/rooms'
 import { FURNITURE, FURNITURE_IDS } from '../data/furniture'
 
 export const HALL_WIDTH = 960
 export const HALL_HEIGHT = 500
+
+// Вместимость помещения по «ячейкам» стеллажей в переднем ряду.
+// Стеллаж занимает 2 базовые ячейки + по 1 на полку, плюс зазор между
+// соседними стойками. Сумма не должна превышать ширину зала (ROOM_W),
+// иначе стойки начнут «уезжать» за пределы видимой области.
+export const ROOM_SHELF_CELL_CAPACITY = 18
+
+export function shelfCellSize(spec: { slabs: unknown[] }): number {
+  return 2 + spec.slabs.length
+}
+
+export function roomShelvesTotalCells(shelves: { slabs: unknown[] }[]): number {
+  const cells = shelves.reduce((a, s) => a + shelfCellSize(s), 0)
+  return cells + Math.max(0, shelves.length - 1)
+}
 
 export interface TankRect {
   shelfId: string
@@ -144,11 +158,14 @@ export function layoutHall(state: GameState): { shelves: ShelfRect[] } {
   const roomShelves = state.shelves.filter((s) => s.roomId === state.viewRoom)
   const cells = roomShelves.map((s) => 2 + s.slabs.length)
   const total = cells.reduce((a, b) => a + b, 0) + Math.max(0, cells.length - 1)
-  let cursor = Math.max(0, (ROOM_W - total) / 2)
+  // Если стоек слишком много (например, из старого сохранения) — масштабируем,
+  // чтобы ни одна стойка не вышла за пределы видимой области.
+  const scale = total > ROOM_W ? ROOM_W / total : 1
+  let cursor = Math.max(0, (ROOM_W - total * scale) / 2)
 
   for (let i = 0; i < roomShelves.length; i++) {
     const shelf = roomShelves[i]
-    const c = cells[i]
+    const c = cells[i] * scale
     const b = makeBox(cursor, 0, cursor + c, 1, SHELF_H)
 
     const tanks: TankRect[] = []
@@ -175,7 +192,7 @@ export function layoutHall(state: GameState): { shelves: ShelfRect[] } {
     }
 
     shelves.push({ shelfId: shelf.id, name: shelf.name, box: b, x: b.x, y: b.y - b.h, w: b.w, h: b.h, tanks })
-    cursor += c + 1
+    cursor += c + scale
   }
 
   return { shelves }
@@ -443,12 +460,6 @@ export function drawHall(ctx: CanvasRenderingContext2D, state: GameState, select
     ctx.lineTo(floorR + z * DEPTH_SLANT, sy(z))
     ctx.stroke()
   }
-
-  const room = ROOM_BY_ID[state.viewRoom]
-  ctx.fillStyle = '#2e2016'
-  ctx.font = 'bold 15px system-ui'
-  ctx.textAlign = 'left'
-  ctx.fillText(`${room.icon} ${room.name} — ${room.desc}`, PAD, 26)
 
   const { shelves } = layoutHall(state)
   const furniture = layoutFurniture(state)
