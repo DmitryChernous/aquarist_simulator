@@ -15,6 +15,10 @@
   box-sizing: border-box;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   background: linear-gradient(180deg, #0d1b2a 0%, #0a1622 100%);
