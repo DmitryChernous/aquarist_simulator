@@ -380,6 +380,36 @@ body {
 .rename-input {
   flex: 1 1 160px;
 }
+.icon-btn {
+  flex: none;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  background: var(--panel, #1a1f29);
+  color: var(--text, #ddd);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.icon-btn:hover {
+  background: var(--accent, #4a9eff);
+  color: #fff;
+}
+.rename-inline {
+  flex: 1 1 140px;
+  min-width: 120px;
+  padding: 4px 8px;
+  border: 1px solid var(--accent, #4a9eff);
+  border-radius: 6px;
+  background: var(--panel, #1a1f29);
+  color: var(--text, #ddd);
+  font-size: 14px;
+}
+.aq-name-row.edit .icon-btn {
+  margin-right: 4px;
+}
 .aq-line {
   font-size: 13px;
   color: var(--text);

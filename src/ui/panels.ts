@@ -243,6 +243,12 @@ export function buildApp(actions: UIActions) {
     filter: 'Фильтры', pump: 'Помпы', light: 'Лампы', heater: 'Нагреватели', co2: 'Углекислый газ', measure: 'Измерение',
   }
 
+  let editAqId: string | null = null
+  let editDraft = ''
+  let editFocusPending = false
+  let editSelStart = 0
+  let editSelEnd = 0
+
   function setStoreSection(v: 'fish' | 'decor' | 'equip'): void {
     activeStoreMode = 'sale'
     activeStoreSection = v
@@ -706,6 +712,68 @@ export function buildApp(actions: UIActions) {
     }
   }
 
+  function renderAqNameRow(container: HTMLElement, aq: AquariumState): void {
+    const wasFocused = container.contains(document.activeElement)
+    container.innerHTML = ''
+    if (editAqId === aq.id) {
+      const inp = el('input') as HTMLInputElement
+      inp.type = 'text'
+      inp.maxLength = 40
+      inp.className = 'rename-inline'
+      inp.value = editDraft
+      const save = (): void => {
+        const n = editDraft.trim()
+        if (n && n !== aq.name) actions.onRenameAquarium(aq.id, n)
+        editAqId = null
+        renderAqNameRow(container, aq)
+      }
+      const cancel = (): void => {
+        editAqId = null
+        renderAqNameRow(container, aq)
+      }
+      inp.addEventListener('input', () => {
+        editDraft = inp.value
+        editSelStart = inp.selectionStart ?? inp.value.length
+        editSelEnd = inp.selectionEnd ?? editSelStart
+      })
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') save()
+        if (e.key === 'Escape') cancel()
+      })
+      const ok = el('button', 'icon-btn', '✓')
+      ok.title = 'Сохранить'
+      ok.addEventListener('click', save)
+      const x = el('button', 'icon-btn', '✕')
+      x.title = 'Отменить'
+      x.addEventListener('click', cancel)
+      const row = el('div', 'aq-name-row edit')
+      row.append(inp, ok, x)
+      container.append(row)
+      if (editFocusPending) {
+        editFocusPending = false
+        inp.focus()
+        inp.select()
+      } else if (wasFocused) {
+        inp.focus()
+        inp.setSelectionRange(editSelStart, editSelEnd)
+      }
+      return
+    }
+    const nameRow = el('div', 'aq-name-row')
+    nameRow.append(el('div', 'aq-keys', aq.name))
+    const editBtn = el('button', 'icon-btn', '✎')
+    editBtn.title = 'Переименовать'
+    editBtn.addEventListener('click', () => {
+      if (editAqId) return
+      editAqId = aq.id
+      editDraft = aq.name
+      editFocusPending = true
+      renderAqNameRow(container, aq)
+    })
+    nameRow.append(editBtn)
+    container.append(nameRow)
+  }
+
   function openRenameModal(current: string, onSave: (name: string) => void): void {
     const { body } = overlay('Переименовать аквариум')
     const inp = el('input') as HTMLInputElement
@@ -755,12 +823,7 @@ export function buildApp(actions: UIActions) {
     const aqRoom = aqShelf ? ROOM_BY_ID[aqShelf.roomId] : null
 
     aqInfo.innerHTML = ''
-    const nameRow = el('div', 'aq-name-row')
-    nameRow.append(el('div', 'aq-keys', aq.name))
-    const renameBtn = el('button', 'btn small', 'Переименовать')
-    renameBtn.addEventListener('click', () => openRenameModal(aq.name, (n) => actions.onRenameAquarium(aq.id, n)))
-    nameRow.append(renameBtn)
-    aqInfo.append(nameRow)
+    renderAqNameRow(aqInfo, aq)
     if (aqRoom && aqShelf) {
       aqInfo.append(el('div', 'aq-line loc-line', `${aqRoom.icon} Помещение: ${aqRoom.name} · Стойка: «${aqShelf.name}»`))
     }
