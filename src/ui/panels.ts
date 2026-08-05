@@ -52,7 +52,6 @@ export interface UIActions {
   onSellRackEquipment(id: EquipmentId): void
   onStockToAquarium(speciesId: string, aqId: string, count: number): void
   onMoveToStorage(aqId: string, fishId: string): void
-  onToggleForSale(aqId: string): void
   onFeed(aqId: string, fishId: string | null, foodId: FoodId): void
   onBuyFood(id: FoodId): void
   onOrderFromSupplier(speciesId: string): void
@@ -408,7 +407,7 @@ export function buildApp(actions: UIActions) {
 
   function fpAq(state: GameState): string {
     const all = allAquariums(state)
-    let s = all.map((a) => `${a.id}:${a.fish.length}:${a.equipment.length}:${a.decor.length}:${a.designLevel}:${a.forSale ? 1 : 0}:${shelfOfAquarium(state, a)?.id ?? ''}`).join(',')
+    let s = all.map((a) => `${a.id}:${a.fish.length}:${a.equipment.length}:${a.decor.length}:${a.designLevel}:${a.decor.length === 0 ? 1 : 0}:${shelfOfAquarium(state, a)?.id ?? ''}`).join(',')
     const aq = all.find((a) => a.id === state.selectedAquariumId)
     if (aq) {
       const w = aq.water
@@ -869,7 +868,7 @@ export function buildApp(actions: UIActions) {
       aqInfo.append(el('div', 'aq-line loc-line', `${aqRoom.icon} Помещение: ${aqRoom.name} · Стойка: «${aqShelf.name}»`))
     }
     aqInfo.append(el('div', 'aq-line', `Объём ${aq.volume} л (${aq.w}×${aq.d}×${aq.h} см)`))
-    aqInfo.append(el('div', aq.forSale ? 'aq-line sale-line' : 'aq-line', aq.forSale ? 'Продажный: рыбу из него можно продавать в розницу' : 'Обычный аквариум: рыбу из него не продают (уберите декор, чтобы сделать продажным)'))
+    aqInfo.append(el('div', aq.decor.length === 0 ? 'aq-line sale-line' : 'aq-line', aq.decor.length === 0 ? 'Продажный (без декора): рыбу из него можно продавать в розницу' : 'Видовой аквариум: рыбу из него не продают — уберите декор, чтобы сделать продажным'))
     const w = aq.water
     const hasThermo = aq.equipment.some((e) => e.id === 'thermometer')
     const tempLine = hasThermo
@@ -915,8 +914,6 @@ export function buildApp(actions: UIActions) {
     mkBtn('Обитатели', () => openInhabitantsModal(state, aq.id))
     mkBtn('Обслуживание', () => openMaintenanceModal(state, aq.id))
     mkBtn('Переместить', () => openAquariumMoveModal(state, aq.id))
-    const saleBtn = mkBtn(aq.forSale ? 'Убрать из продажи' : 'Сделать продажным', () => actions.onToggleForSale(aq.id))
-    if (aq.forSale) saleBtn.classList.add('sale-active')
   }
 
   function openEquipmentModal(s: GameState, aqId: string): void {

@@ -8,7 +8,7 @@ import { FOOD } from './data/food'
 import { FURNITURE } from './data/furniture'
 import { ROOM_BY_ID } from './data/rooms'
 import { DAY_DURATION_SECONDS } from './timing'
-import { allAquariums, canStock, fishRetailStock, fitAquariums, freeStockSpace, recalcWater, takeSellableFish, tickWater, usedVolume } from './sim/aquarium'
+import { allAquariums, canStock, fishRetailStock, fitAquariums, freeStockSpace, isSellable, recalcWater, takeSellableFish, tickWater, usedVolume } from './sim/aquarium'
 import { updateHealth, feedFish } from './sim/health'
 import { canEatFood, liveShelfDays } from './sim/food'
 import { buyPrice, dailyUpkeep, wholesalePrice } from './sim/economy'
@@ -51,13 +51,22 @@ function newAquarium(shelfId: string, slabId: string, modelId: string, x: number
     fish: [],
     equipment: [],
     designLevel: 0,
-    forSale: false,
   }
 }
 
 function shelfAquariumNum(shelfId: string): number {
   const shelf = state.shelves.find((s) => s.id === shelfId)
   return shelf ? shelf.aquariums.length : 0
+}
+
+// Может ли в продажный (голый) аквариум быть добавлен декор без переполнения:
+// перевод в видовой режим переключает объём на полный minVolume, рыба не должна вылезти за лимит.
+function decorateOverflows(aq: AquariumState): boolean {
+  if (isSellable(aq) && aq.fish.length > 0) {
+    const usedFull = aq.fish.reduce((acc, f) => acc + SPECIES_BY_ID[f.speciesId].minVolume, 0)
+    if (usedFull > aq.volume) return true
+  }
+  return false
 }
 
 function addStock(stock: TankState['stock'], speciesId: string, count: number): void {
@@ -412,8 +421,8 @@ onInstallEquipment(id, aqId) {
   onAddDecor(aqId, kind) {
     const aq = aquariumById(aqId)
     if (!aq) return
-    if (aq.forSale) {
-      ui.flash('В продажном аквариуме не может быть декора!')
+    if (decorateOverflows(aq)) {
+      ui.flash('Нельзя добавить декор: в аквариуме рыбы, которые не поместятся в видовом режиме!')
       return
     }
     const def = DECOR[kind]
@@ -437,8 +446,8 @@ onInstallEquipment(id, aqId) {
   onPlaceDecorFromRack(kind, aqId) {
     const aq = aquariumById(aqId)
     if (!aq) return
-    if (aq.forSale) {
-      ui.flash('В продажном аквариуме не может быть декора!')
+    if (decorateOverflows(aq)) {
+      ui.flash('Нельзя добавить декор: в аквариуме рыбы, которые не поместятся в видовом режиме!')
       return
     }
     const idx = state.shop.rackDecor.indexOf(kind)
@@ -520,22 +529,6 @@ onInstallEquipment(id, aqId) {
     aq.fish = aq.fish.filter((f) => f.id !== fishId)
     addStock(state.storage.stock, fish.speciesId, 1)
     pushLog(`${SPECIES_BY_ID[fish.speciesId].name} убрана с аквариума в склад`, 'info')
-    bump()
-  },
-  onToggleForSale(aqId) {
-    const aq = aquariumById(aqId)
-    if (!aq) return
-    if (!aq.forSale) {
-      if (aq.decor.length > 0) {
-        ui.flash('Сначала уберите весь декор — продажный аквариум должен быть пустым')
-        return
-      }
-      aq.forSale = true
-      pushLog(`«${aq.name}» теперь продажный: рыба из него продаётся в розницу`, 'info')
-    } else {
-      aq.forSale = false
-      pushLog(`«${aq.name}» больше не продажный`, 'info')
-    }
     bump()
   },
   onFeed(aqId, fishId, foodId) {

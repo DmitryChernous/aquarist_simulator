@@ -466,3 +466,18 @@ Flash-сообщения были in-flow элементом внутри .hud-r
 Файлы: src/types.ts, src/save.ts, src/sim/aquarium.ts (SALE_VOLUME_FACTOR, fishRetailStock, takeSellableFish), src/sim/buyers.ts, src/main.ts (onToggleForSale, itemStock/takeItems), src/ui/panels.ts, src/ui/renderHall.ts, src/style.css.
 
 Критерий: продать рыбу в розницу можно только из голого продажного аквариума; декорированные витрины не продаются; в продажном аквариуме помещается больше рыбы (меньший объём на особь).
+
+## 0.31.1 - Автоматический «продажный» аквариум (без декора)
+
+Исправление: продажный статус больше не требуется включать переключателем — он выводится автоматически из наличия декора.
+
+Изменения:
+- «Продажный» аквариум = любой аквариум без декора (isSellable: decor.length===0). Все проверки (fishRetailStock, takeSellableFish, canStock/usedVolume/volume-фактор, витрины, маркер «ПРОДАЖА») используют производный признак.
+- Убран переключатель «Сделать продажным / Убрать из продажи» и action onToggleForSale — больше не нужен и сбивал с толку (кнопка «Продать» оставалась disabled, даже когда рыба уже стояла в голом аквариуме, но флаг не выставлялся).
+- Поле AquariumState.forSale удалено из types.ts, save.ts (defaultState, migrateDisplayTanks) и всех мест использования; старые сохранения по-прежнему работают (поле игнорируется).
+- Добавление декора в голый аквариум с рыбой валидируется: перевод в видовой режим переключает объём на полный minVolume, поэтому при переполнении блок (decorateOverflows) с подсказкой.
+- Эффект: удаление декора из аквариума сразу делает его продажным.
+
+Файлы: src/types.ts, src/save.ts, src/sim/aquarium.ts (isSellable), src/sim/buyers.ts, src/main.ts (decorateOverflows, onAddDecor/onPlaceDecorFromRack), src/ui/panels.ts (fpAq, aqInfo, aqActions).
+
+Критерий: рыба, стоящая в любом голом аквариуме (decor.length===0), мгновенно учитывается в розничном запасе и кнопка «Продать» в заказе становится активной; декорированные витрины и рыба в пакетах склада в розницу не продаются.

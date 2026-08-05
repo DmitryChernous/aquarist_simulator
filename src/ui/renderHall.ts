@@ -274,7 +274,7 @@ function drawTank(ctx: CanvasRenderingContext2D, aq: any, r: { x: number; y: num
   ctx.fillStyle = 'rgba(255,255,255,0.85)'
   ctx.fillText(`${aq.fish.length}р · ${aq.volume}л`, r.x + r.w / 2, r.y + 12)
 
-  if (aq.forSale) {
+  if (aq.decor.length === 0) {
     const blink = (Math.floor(performance.now() / 700) % 2) === 0
     ctx.fillStyle = blink ? '#66bb6a' : '#2e7d32'
     ctx.beginPath()

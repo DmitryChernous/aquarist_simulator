@@ -82,14 +82,19 @@ export function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v))
 }
 
+// «Продажный» аквариум — без декора: единственный источник розничной продажи рыбы.
+export function isSellable(aq: AquariumState): boolean {
+  return aq.decor.length === 0
+}
+
 export function usedVolume(aq: AquariumState, speciesById: Record<string, FishSpecies> = SPECIES_BY_ID): number {
-  const factor = aq.forSale ? SALE_VOLUME_FACTOR : 1
+  const factor = isSellable(aq) ? SALE_VOLUME_FACTOR : 1
   return aq.fish.reduce((acc, f) => acc + (speciesById[f.speciesId]?.minVolume ?? 0) * factor, 0)
 }
 
 export function canStock(aq: AquariumState, species: FishSpecies, _n: number): number {
   const left = aq.volume - usedVolume(aq)
-  const per = species.minVolume * (aq.forSale ? SALE_VOLUME_FACTOR : 1)
+  const per = species.minVolume * (isSellable(aq) ? SALE_VOLUME_FACTOR : 1)
   return Math.max(0, Math.floor(left / per))
 }
 
@@ -103,7 +108,7 @@ export function freeStockSpace(state: GameState, species: FishSpecies): number {
 // Розничный запас рыбы: только особи в «продажных» аквариумах (без декора).
 export function fishRetailStock(state: GameState, speciesId: string): number {
   let n = 0
-  for (const aq of allAquariums(state)) if (aq.forSale) for (const f of aq.fish) if (f.speciesId === speciesId) n++
+  for (const aq of allAquariums(state)) if (isSellable(aq)) for (const f of aq.fish) if (f.speciesId === speciesId) n++
   return n
 }
 
@@ -112,7 +117,7 @@ export function takeSellableFish(state: GameState, speciesId: string, n: number)
   let need = n
   for (const aq of allAquariums(state)) {
     if (need <= 0) break
-    if (!aq.forSale) continue
+    if (!isSellable(aq)) continue
     const matches = aq.fish.filter((f) => f.speciesId === speciesId)
     if (matches.length === 0) continue
     const take = Math.min(matches.length, need)
