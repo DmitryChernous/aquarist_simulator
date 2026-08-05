@@ -206,6 +206,7 @@ export function buildApp(actions: UIActions) {
   const hallActions = app.querySelector<HTMLDivElement>('.hall-actions')!
   const roomSwitch = app.querySelector<HTMLDivElement>('.room-switch')!
   const ordersPanel = app.querySelector<HTMLDivElement>('.orders-panel')!
+  const orderBanner = app.querySelector<HTMLButtonElement>('.order-banner')!
 
   const roomAside = app.querySelector<HTMLDivElement>('.room-aside')!
 
@@ -233,6 +234,10 @@ export function buildApp(actions: UIActions) {
   app.querySelector<HTMLButtonElement>('.btn-reset')!.addEventListener('click', () => actions.onReset())
   pauseBtn.addEventListener('click', () => actions.onTogglePause())
   for (const btn of speedBtns) btn.addEventListener('click', () => actions.onSetSpeed(Number(btn.dataset.speed)))
+
+  hudVisitors.classList.add('clickable')
+  hudVisitors.addEventListener('click', () => switchTab(app, 'orders'))
+  orderBanner.addEventListener('click', () => switchTab(app, 'orders'))
   aquariumSelect.addEventListener('change', () => actions.onSelectAquarium(aquariumSelect.value))
   let latestState: GameState = null as unknown as GameState
 
@@ -389,7 +394,7 @@ export function buildApp(actions: UIActions) {
   }
 
   function fpZal(state: GameState): string {
-    let s = `${state.viewRoom}|shelves:${state.shelves.map((sh) => `${sh.id}:${sh.roomId}:${sh.aquariums.length}:${sh.aquariums.reduce((a, q) => a + q.fish.length, 0)}`).join(',')}|racks:${state.racks.length}|money:${state.money >= STORAGE_TANK_PRICE ? 1 : 0}|racksFull:${state.racks.length * STORAGE_RACK_CAPACITY >= STORAGE_MAX_SLOTS ? 1 : 0}|filter:${storageFilter}|furn:${state.shop.furniture.displayRack ?? 0}:${(state.shop.furniture.coffeeTable ?? 0) + (state.shop.furniture.armchair ?? 0) + (state.shop.furniture.sofa ?? 0)}|sales:${state.sales}|vis:${state.totalVisitors}|att:${Math.round(shopAttractiveness(state))}`
+    let s = `${state.viewRoom}|orders:${state.orders.length}|shelves:${state.shelves.map((sh) => `${sh.id}:${sh.roomId}:${sh.aquariums.length}:${sh.aquariums.reduce((a, q) => a + q.fish.length, 0)}`).join(',')}|racks:${state.racks.length}|money:${state.money >= STORAGE_TANK_PRICE ? 1 : 0}|racksFull:${state.racks.length * STORAGE_RACK_CAPACITY >= STORAGE_MAX_SLOTS ? 1 : 0}|filter:${storageFilter}|furn:${state.shop.furniture.displayRack ?? 0}:${(state.shop.furniture.coffeeTable ?? 0) + (state.shop.furniture.armchair ?? 0) + (state.shop.furniture.sofa ?? 0)}|sales:${state.sales}|vis:${state.totalVisitors}|att:${Math.round(shopAttractiveness(state))}`
     if (state.viewRoom === 'storage') {
       s += `|u:${storageUsed(state.shop)}/${storageCapacity(state.racks.length)}|f:${state.storage.stock.map((i) => i.speciesId + ':' + i.count).join(',')}|e:${state.shop.rackInventory.join(',')}|d:${state.shop.rackDecor.join(',')}`
     }
@@ -462,6 +467,10 @@ export function buildApp(actions: UIActions) {
     const manage = el('button', 'btn', 'Управление стойками')
     manage.addEventListener('click', () => openShelvesModal(state))
     hallActions.append(manage)
+
+    const n = state.orders.length
+    orderBanner.classList.toggle('show', n > 0)
+    orderBanner.textContent = n > 0 ? `✦ ${n} ${n === 1 ? 'заказ' : 'заказов'} ожидают — открыть` : ''
 
     renderRoomAside(state)
   }
@@ -2039,6 +2048,7 @@ function buildLayout(): HTMLElement {
   roomStage.append(
     el('div', 'room-switch'),
     buildHallCanvas(),
+    el('button', 'order-banner', ''),
     el('h2', 'sec-title', 'Управление стойками'),
     el('div', 'hall-actions'),
   )

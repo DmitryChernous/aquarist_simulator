@@ -387,6 +387,59 @@ function drawFurniture(ctx: CanvasRenderingContext2D, state: GameState, f: Furni
   ctx.fillText(def.name, b.x + b.w / 2, b.y - b.h - 9)
 }
 
+export interface CashRegisterRect {
+  box: Box
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+// Касса — оборудование зала: расположена у фронтальной части, справа у входа.
+export function layoutCashRegister(state: GameState): CashRegisterRect | null {
+  if (!state.shop.cashRegister || state.viewRoom !== 'hall') return null
+  const b = makeBox(13, 7, 16.4, 8, 78)
+  return { box: b, x: b.x, y: b.y - b.h, w: b.w, h: b.h }
+}
+
+function drawCashRegister(ctx: CanvasRenderingContext2D, state: GameState): void {
+  const reg = layoutCashRegister(state)
+  if (!reg) return
+  const b = reg.box
+  drawBox(ctx, b, { front: '#37474f', side: '#263238', top: '#455a64', edge: '#1c262b' })
+
+  ctx.fillStyle = '#eceff1'
+  ctx.fillRect(b.x + b.w * 0.12, b.y - b.h * 0.42, b.w * 0.3, b.h * 0.3)
+  ctx.strokeStyle = '#90a4ae'
+  ctx.lineWidth = 1.5
+  ctx.strokeRect(b.x + b.w * 0.12, b.y - b.h * 0.42, b.w * 0.3, b.h * 0.3)
+
+  const orders = state.orders.length
+  const blink = (Math.floor(performance.now() / 500) % 2) === 0
+  ctx.fillStyle = orders > 0 ? (blink ? '#ffc107' : '#ff8f00') : blink ? '#2e7d32' : '#1b5e20'
+  ctx.beginPath()
+  ctx.arc(b.x + b.w * 0.7, b.y - b.h * 0.3, 7, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)'
+  ctx.lineWidth = 1
+  ctx.stroke()
+
+  ctx.fillStyle = 'rgba(236,239,241,0.95)'
+  ctx.font = 'bold 12px system-ui'
+  ctx.textAlign = 'center'
+  if (orders > 0) {
+    ctx.fillText(`✦ ${orders}`, b.x + b.w * 0.7, b.y - b.h * 0.3 + 4)
+    ctx.fillStyle = 'rgba(255,193,7,0.95)'
+    ctx.fillText('заказ(а) ожидают', b.x + b.w / 2, b.y + 4)
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.7)'
+  ctx.font = '10px system-ui'
+  ctx.fillText('Касса', b.x + b.w / 2, b.y - b.h - 8)
+  ctx.fillStyle = 'rgba(236,239,241,0.85)'
+  ctx.font = '10px system-ui'
+  ctx.fillText('нажмите, чтобы перейти к заказам', b.x + b.w / 2, b.y + 16)
+}
+
 function drawStorageObject(ctx: CanvasRenderingContext2D, state: GameState, o: StorageObjectRect): void {
   const b = o.box
   drawBox(ctx, b, { front: '#5b4127', side: '#3f2c19', top: '#7c6145', edge: '#2e2016' })
@@ -470,6 +523,8 @@ export function drawHall(ctx: CanvasRenderingContext2D, state: GameState, select
   for (const s of shelves) items.push({ wz: s.box.wz, wx: s.box.wx, draw: () => drawShelf(ctx, state, s, selectedId, time) })
   for (const f of furniture) items.push({ wz: f.box.wz, wx: f.box.wx, draw: () => drawFurniture(ctx, state, f) })
   for (const o of storage) items.push({ wz: o.box.wz, wx: o.box.wx, draw: () => drawStorageObject(ctx, state, o) })
+  const reg = layoutCashRegister(state)
+  if (reg) items.push({ wz: reg.box.wz, wx: reg.box.wx, draw: () => drawCashRegister(ctx, state) })
   items.sort((a, b) => a.wz - b.wz || a.wx - b.wx)
   for (const it of items) it.draw()
 

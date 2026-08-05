@@ -15,7 +15,7 @@ import { availableStock, buyPrice, dailyUpkeep, wholesalePrice } from './sim/eco
 import { arrivalInterval, generateOrder, shopAttractiveness, updateMarket } from './sim/buyers'
 import { clearSave, loadState, saveState } from './save'
 import { renderAquarium } from './ui/render'
-import { drawHall, layoutFurniture, layoutHall, layoutStorageObjects, HALL_HEIGHT, HALL_WIDTH, ROOM_SHELF_CELL_CAPACITY, roomShelvesTotalCells, shelfCellSize } from './ui/renderHall'
+import { drawHall, layoutCashRegister, layoutFurniture, layoutHall, layoutStorageObjects, HALL_HEIGHT, HALL_WIDTH, ROOM_SHELF_CELL_CAPACITY, roomShelvesTotalCells, shelfCellSize } from './ui/renderHall'
 import { buildApp } from './ui/panels'
 import type { AquariumState, DecorKind, EquipmentId, FishInstance, FishSpecies, FurnitureId, GameState, LogKind, Order, ShelfState, TankState } from './types'
 
@@ -621,6 +621,11 @@ hallCanvas.addEventListener('click', (e) => {
   const rect = hallCanvas.getBoundingClientRect()
   const sx = ((e.clientX - rect.left) / rect.width) * HALL_WIDTH
   const sy = ((e.clientY - rect.top) / rect.height) * HALL_HEIGHT
+  const reg = layoutCashRegister(state)
+  if (reg && sx >= reg.x && sx <= reg.x + reg.w && sy >= reg.y && sy <= reg.y + reg.h) {
+    ui.selectTab('orders')
+    return
+  }
   for (const obj of layoutStorageObjects(state)) {
     if (sx >= obj.x && sx <= obj.x + obj.w && sy >= obj.y && sy <= obj.y + obj.h) {
       ui.openStorageModal()
