@@ -4,8 +4,12 @@ import { shelfLoadLeft } from '../data/shop'
 
 // Комнатная температура: без нагревателя вода стремится к ней.
 export const ROOM_TEMP = 24
-// скорость сходимости температуры кадра: доля отставания, закрываемая за 1 сек
+// Скорость сходимости температуры кадра: доля отставания, закрываемая за 1 сек
 const TEMP_APPROACH_PER_SEC = 0.05
+
+// Сценарный объём воды: в «продажном» аквариуме рыба сидит недолго, поэтому ей
+// достаточно меньшего объёма, чем в долгоживущей видовой витрине.
+export const SALE_VOLUME_FACTOR = 0.4
 
 export function allAquariums(state: GameState): AquariumState[] {
   const out: AquariumState[] = []
@@ -79,12 +83,14 @@ export function clamp(v: number, min: number, max: number): number {
 }
 
 export function usedVolume(aq: AquariumState, speciesById: Record<string, FishSpecies> = SPECIES_BY_ID): number {
-  return aq.fish.reduce((acc, f) => acc + (speciesById[f.speciesId]?.minVolume ?? 0), 0)
+  const factor = aq.forSale ? SALE_VOLUME_FACTOR : 1
+  return aq.fish.reduce((acc, f) => acc + (speciesById[f.speciesId]?.minVolume ?? 0) * factor, 0)
 }
 
 export function canStock(aq: AquariumState, species: FishSpecies, _n: number): number {
   const left = aq.volume - usedVolume(aq)
-  return Math.max(0, Math.floor(left / species.minVolume))
+  const per = species.minVolume * (aq.forSale ? SALE_VOLUME_FACTOR : 1)
+  return Math.max(0, Math.floor(left / per))
 }
 
 // Свободная ёмкость по всем аквариумам для заданного вида — сколько рыб можно принять.
@@ -92,6 +98,29 @@ export function freeStockSpace(state: GameState, species: FishSpecies): number {
   let n = 0
   for (const aq of allAquariums(state)) n += canStock(aq, species, Number.MAX_SAFE_INTEGER)
   return n
+}
+
+// Розничный запас рыбы: только особи в «продажных» аквариумах (без декора).
+export function fishRetailStock(state: GameState, speciesId: string): number {
+  let n = 0
+  for (const aq of allAquariums(state)) if (aq.forSale) for (const f of aq.fish) if (f.speciesId === speciesId) n++
+  return n
+}
+
+// Изъять особей вида из продажных аквариумов для продажи.
+export function takeSellableFish(state: GameState, speciesId: string, n: number): number {
+  let need = n
+  for (const aq of allAquariums(state)) {
+    if (need <= 0) break
+    if (!aq.forSale) continue
+    const matches = aq.fish.filter((f) => f.speciesId === speciesId)
+    if (matches.length === 0) continue
+    const take = Math.min(matches.length, need)
+    const remove = new Set(matches.slice(0, take).map((f) => f.id))
+    aq.fish = aq.fish.filter((f) => !remove.has(f.id))
+    need -= take
+  }
+  return n - need
 }
 
 export function plantCount(aq: AquariumState): number {

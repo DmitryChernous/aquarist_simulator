@@ -479,6 +479,16 @@ body {
 .aq-action:hover {
   border-color: var(--accent);
 }
+.aq-action.sale-active {
+  border-color: var(--ok);
+  background: rgba(76, 175, 80, 0.12);
+  color: var(--ok);
+  font-weight: 700;
+}
+.aq-line.sale-line {
+  color: var(--ok);
+  font-weight: 600;
+}
 .aq-info .design-row {
   display: flex;
   align-items: center;

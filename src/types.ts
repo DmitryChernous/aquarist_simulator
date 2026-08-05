@@ -167,6 +167,7 @@ export interface AquariumState {
   fish: FishInstance[]
   equipment: EquipmentInst[]
   designLevel: number
+  forSale: boolean // «продажный» аквариум (без декора): единственный источник розничной продажи рыбы
 }
 
 // --- Помещения ---

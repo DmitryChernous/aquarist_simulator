@@ -8,9 +8,9 @@ import { ROOMS, ROOM_BY_ID } from '../data/rooms'
 import { FURNITURE, FURNITURE_IDS, furnitureCount } from '../data/furniture'
 import { HALL_HEIGHT, HALL_WIDTH, ROOM_SHELF_CELL_CAPACITY, roomShelvesTotalCells, shelfCellSize } from './renderHall'
 import { shopAttractiveness, tankAttractiveness } from '../sim/buyers'
-import { availableStock, buyPrice, decorStock, equipmentStock, retailPrice, wholesalePrice } from '../sim/economy'
+import { buyPrice, decorStock, equipmentStock, retailPrice, wholesalePrice } from '../sim/economy'
 import { canEatFood, foodPortions, foodStockEntries, freshnessLeft } from '../sim/food'
-import { canStock, maxFitOnShelf, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
+import { canStock, fishRetailStock, maxFitOnShelf, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
 import { fishWellbeing } from '../sim/wellbeing'
 import { VERSION } from '../version'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
@@ -52,6 +52,7 @@ export interface UIActions {
   onSellRackEquipment(id: EquipmentId): void
   onStockToAquarium(speciesId: string, aqId: string, count: number): void
   onMoveToStorage(aqId: string, fishId: string): void
+  onToggleForSale(aqId: string): void
   onFeed(aqId: string, fishId: string | null, foodId: FoodId): void
   onBuyFood(id: FoodId): void
   onOrderFromSupplier(speciesId: string): void
@@ -407,7 +408,7 @@ export function buildApp(actions: UIActions) {
 
   function fpAq(state: GameState): string {
     const all = allAquariums(state)
-    let s = all.map((a) => `${a.id}:${a.fish.length}:${a.equipment.length}:${a.decor.length}:${a.designLevel}:${shelfOfAquarium(state, a)?.id ?? ''}`).join(',')
+    let s = all.map((a) => `${a.id}:${a.fish.length}:${a.equipment.length}:${a.decor.length}:${a.designLevel}:${a.forSale ? 1 : 0}:${shelfOfAquarium(state, a)?.id ?? ''}`).join(',')
     const aq = all.find((a) => a.id === state.selectedAquariumId)
     if (aq) {
       const w = aq.water
@@ -720,7 +721,7 @@ export function buildApp(actions: UIActions) {
       const timer = el('span', 'order-timer', `⏳ ${Math.ceil(order.timeLeft)}с`)
       const sellBtn = el('button', 'btn small', `Продать за ${total}₽`)
       const stock = isFish
-        ? availableStock(state, order.speciesId)
+        ? fishRetailStock(state, order.speciesId)
         : order.itemType === 'equip'
           ? equipmentStock(state, order.itemId as EquipmentId)
           : decorStock(state, order.itemId as DecorKind)
@@ -868,6 +869,7 @@ export function buildApp(actions: UIActions) {
       aqInfo.append(el('div', 'aq-line loc-line', `${aqRoom.icon} Помещение: ${aqRoom.name} · Стойка: «${aqShelf.name}»`))
     }
     aqInfo.append(el('div', 'aq-line', `Объём ${aq.volume} л (${aq.w}×${aq.d}×${aq.h} см)`))
+    aqInfo.append(el('div', aq.forSale ? 'aq-line sale-line' : 'aq-line', aq.forSale ? 'Продажный: рыбу из него можно продавать в розницу' : 'Обычный аквариум: рыбу из него не продают (уберите декор, чтобы сделать продажным)'))
     const w = aq.water
     const hasThermo = aq.equipment.some((e) => e.id === 'thermometer')
     const tempLine = hasThermo
@@ -906,12 +908,15 @@ export function buildApp(actions: UIActions) {
       const b = el('button', 'btn aq-action', label)
       b.addEventListener('click', fn)
       aqActions.append(b)
+      return b
     }
     mkBtn('Оборудование', () => openEquipmentModal(state, aq.id))
     mkBtn('Декор', () => openDecorModal(state, aq.id))
     mkBtn('Обитатели', () => openInhabitantsModal(state, aq.id))
     mkBtn('Обслуживание', () => openMaintenanceModal(state, aq.id))
     mkBtn('Переместить', () => openAquariumMoveModal(state, aq.id))
+    const saleBtn = mkBtn(aq.forSale ? 'Убрать из продажи' : 'Сделать продажным', () => actions.onToggleForSale(aq.id))
+    if (aq.forSale) saleBtn.classList.add('sale-active')
   }
 
   function openEquipmentModal(s: GameState, aqId: string): void {

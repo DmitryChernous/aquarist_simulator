@@ -273,6 +273,19 @@ function drawTank(ctx: CanvasRenderingContext2D, aq: any, r: { x: number; y: num
   ctx.font = `${Math.max(7, Math.round(r.h * 0.11))}px system-ui`
   ctx.fillStyle = 'rgba(255,255,255,0.85)'
   ctx.fillText(`${aq.fish.length}р · ${aq.volume}л`, r.x + r.w / 2, r.y + 12)
+
+  if (aq.forSale) {
+    const blink = (Math.floor(performance.now() / 700) % 2) === 0
+    ctx.fillStyle = blink ? '#66bb6a' : '#2e7d32'
+    ctx.beginPath()
+    ctx.arc(r.x + 8, r.y + 8, 5, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = 'rgba(46,125,50,0.95)'
+    ctx.font = 'bold 9px system-ui'
+    ctx.textAlign = 'left'
+    ctx.fillText('ПРОДАЖА', r.x + 16, r.y + 11)
+    ctx.textAlign = 'center'
+  }
 }
 
 function drawShelf(ctx: CanvasRenderingContext2D, state: GameState, s: ShelfRect, selectedId: string | null, time: number): void {

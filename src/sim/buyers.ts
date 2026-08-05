@@ -31,8 +31,8 @@ export function tankAttractiveness(aq: AquariumState): number {
 }
 
 export function shopAttractiveness(state: GameState): number {
-  // Покупатели видят только витрины в зале
-  const displays = aquariumsInRoom(state, 'hall')
+  // Покупатели видят только витрины в зале (продажные голые аквариумы — не витрины)
+  const displays = aquariumsInRoom(state, 'hall').filter((a) => !a.forSale)
   if (displays.length === 0) return 0
 
   const avgTank = displays.reduce((acc, a) => acc + tankAttractiveness(a), 0) / displays.length
@@ -69,7 +69,7 @@ export function conversionChance(state: GameState): number {
 export function speciesDisplayScore(state: GameState, speciesId: string): number {
   let sum = 0
   let count = 0
-  for (const a of aquariumsInRoom(state, 'hall')) {
+  for (const a of aquariumsInRoom(state, 'hall').filter((x) => !x.forSale)) {
     const tAtt = tankAttractiveness(a)
     for (const f of a.fish) {
       if (f.speciesId !== speciesId) continue
@@ -114,7 +114,7 @@ export function generateOrder(state: GameState): Order | null {
   const inStock = new Set<string>()
   for (const t of allStorage2(state)) for (const item of t.stock) if (item.count > 0) inStock.add(item.speciesId)
   const onDisplay = new Set<string>()
-  for (const a of aquariumsInRoom(state, 'hall')) for (const f of a.fish) onDisplay.add(f.speciesId)
+  for (const a of aquariumsInRoom(state, 'hall')) if (!a.forSale) for (const f of a.fish) onDisplay.add(f.speciesId)
   if (inStock.size === 0 && onDisplay.size === 0) return null
 
   // Два архетипа:

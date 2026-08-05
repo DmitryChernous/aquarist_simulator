@@ -8,10 +8,10 @@ import { FOOD } from './data/food'
 import { FURNITURE } from './data/furniture'
 import { ROOM_BY_ID } from './data/rooms'
 import { DAY_DURATION_SECONDS } from './timing'
-import { allAquariums, canStock, fitAquariums, freeStockSpace, recalcWater, tickWater, usedVolume } from './sim/aquarium'
+import { allAquariums, canStock, fishRetailStock, fitAquariums, freeStockSpace, recalcWater, takeSellableFish, tickWater, usedVolume } from './sim/aquarium'
 import { updateHealth, feedFish } from './sim/health'
 import { canEatFood, liveShelfDays } from './sim/food'
-import { availableStock, buyPrice, dailyUpkeep, wholesalePrice } from './sim/economy'
+import { buyPrice, dailyUpkeep, wholesalePrice } from './sim/economy'
 import { arrivalInterval, generateOrder, shopAttractiveness, updateMarket } from './sim/buyers'
 import { clearSave, loadState, saveState } from './save'
 import { renderAquarium } from './ui/render'
@@ -51,6 +51,7 @@ function newAquarium(shelfId: string, slabId: string, modelId: string, x: number
     fish: [],
     equipment: [],
     designLevel: 0,
+    forSale: false,
   }
 }
 
@@ -80,12 +81,12 @@ function takeStock(speciesId: string, n: number): number {
 function itemStock(o: Order): number {
   if (o.itemType === 'equip') return state.shop.rackInventory.filter((e) => e === o.itemId).length
   if (o.itemType === 'decor') return state.shop.rackDecor.filter((d) => d === o.itemId).length
-  return availableStock(state, o.speciesId)
+  return fishRetailStock(state, o.speciesId)
 }
 
 function takeItems(o: Order, n: number): void {
   if (o.itemType === 'fish') {
-    takeStock(o.speciesId, n)
+    takeSellableFish(state, o.speciesId, n)
     return
   }
   let need = n
@@ -411,6 +412,10 @@ onInstallEquipment(id, aqId) {
   onAddDecor(aqId, kind) {
     const aq = aquariumById(aqId)
     if (!aq) return
+    if (aq.forSale) {
+      ui.flash('В продажном аквариуме не может быть декора!')
+      return
+    }
     const def = DECOR[kind]
     if (state.money < def.price) {
       ui.flash('Не хватает денег!')
@@ -432,6 +437,10 @@ onInstallEquipment(id, aqId) {
   onPlaceDecorFromRack(kind, aqId) {
     const aq = aquariumById(aqId)
     if (!aq) return
+    if (aq.forSale) {
+      ui.flash('В продажном аквариуме не может быть декора!')
+      return
+    }
     const idx = state.shop.rackDecor.indexOf(kind)
     if (idx < 0) {
       ui.flash('Декорации нет на складе!')
@@ -511,6 +520,22 @@ onInstallEquipment(id, aqId) {
     aq.fish = aq.fish.filter((f) => f.id !== fishId)
     addStock(state.storage.stock, fish.speciesId, 1)
     pushLog(`${SPECIES_BY_ID[fish.speciesId].name} убрана с аквариума в склад`, 'info')
+    bump()
+  },
+  onToggleForSale(aqId) {
+    const aq = aquariumById(aqId)
+    if (!aq) return
+    if (!aq.forSale) {
+      if (aq.decor.length > 0) {
+        ui.flash('Сначала уберите весь декор — продажный аквариум должен быть пустым')
+        return
+      }
+      aq.forSale = true
+      pushLog(`«${aq.name}» теперь продажный: рыба из него продаётся в розницу`, 'info')
+    } else {
+      aq.forSale = false
+      pushLog(`«${aq.name}» больше не продажный`, 'info')
+    }
     bump()
   },
   onFeed(aqId, fishId, foodId) {
