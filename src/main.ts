@@ -735,7 +735,7 @@ function tryArrive(): void {
   if (order) {
     state.orders.push(order)
     state.totalVisitors += 1
-    pushLog(`Покупатель хочет ${orderLabel(order)} ×${order.qty} (${order.kind === 'demand' ? 'по спросу' : 'по витрине'})`, 'info')
+    pushLog(`${order.kind === 'demand' ? 'Покупатель ищет конкретное' : 'Покупатель выбрал по витрине'}: ${orderLabel(order)} ×${order.qty}`, 'info')
   }
   state.nextVisitorIn = arrivalInterval(shopAttractiveness(state), state.shop.cashRegister)
   bump()

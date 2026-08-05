@@ -117,22 +117,18 @@ export function generateOrder(state: GameState): Order | null {
   for (const a of aquariumsInRoom(state, 'hall')) for (const f of a.fish) onDisplay.add(f.speciesId)
   if (inStock.size === 0 && onDisplay.size === 0) return null
 
-  const determined = onDisplay.size === 0 ? true : Math.random() < 0.5
+  // Два архетипа:
+  // - «на месте»: выбирает из того, что выставлено в зале (kind 'display', малая наценка);
+  // - «ищет конкретное»: просит любой вид из каталога, даже если его нигде нет (kind 'demand',
+  //   большая наценка, количество может превышать имеющийся остаток).
+  const browsing = onDisplay.size > 0 && Math.random() < 0.5
 
   let speciesId: string
   let qty: number
   let unitPrice: number
   let kind: Order['kind']
 
-  if (determined) {
-    const arr = [...new Set([...inStock, ...onDisplay])]
-    const weights = arr.map((s) => Math.max(0.3, state.market[s] ?? 1))
-    speciesId = pickWeighted(arr, weights)
-    qty = 1 + Math.floor(Math.random() * 3)
-    const f = state.market[speciesId] ?? 1
-    unitPrice = Math.round(SPECIES_BY_ID[speciesId].sellPrice * f * (0.92 + Math.random() * 0.16))
-    kind = 'demand'
-  } else {
+  if (browsing) {
     const arr = [...onDisplay]
     const weights = arr.map((s) => speciesDisplayScore(state, s) + 0.05)
     speciesId = pickWeighted(arr, weights)
@@ -142,6 +138,14 @@ export function generateOrder(state: GameState): Order | null {
     const priceBoost = 0.85 + 0.3 * quality + furnitureConversionBonus(state.shop) * 0.4
     unitPrice = Math.round(SPECIES_BY_ID[speciesId].sellPrice * f * priceBoost)
     kind = 'display'
+  } else {
+    const arr = FISH_SPECIES.map((s) => s.id)
+    const weights = arr.map((s) => Math.max(0.3, state.market[s] ?? 1))
+    speciesId = pickWeighted(arr, weights)
+    qty = 1 + Math.floor(Math.random() * 3)
+    const f = state.market[speciesId] ?? 1
+    unitPrice = Math.round(SPECIES_BY_ID[speciesId].sellPrice * f * (1.05 + Math.random() * 0.25))
+    kind = 'demand'
   }
 
   return {

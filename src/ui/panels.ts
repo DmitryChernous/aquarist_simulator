@@ -715,7 +715,7 @@ export function buildApp(actions: UIActions) {
         dot.style.background = species.color
         row.append(dot)
       }
-      const badge = el('span', order.kind === 'demand' ? 'compat ok' : 'compat warn', order.kind === 'demand' ? 'по спросу' : 'по витрине')
+      const badge = el('span', order.kind === 'demand' ? 'compat ok' : 'compat warn', order.kind === 'demand' ? 'ищет конкретное' : 'по витрине')
       const total = order.unitPrice * order.qty
       const timer = el('span', 'order-timer', `⏳ ${Math.ceil(order.timeLeft)}с`)
       const sellBtn = el('button', 'btn small', `Продать за ${total}₽`)
