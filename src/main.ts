@@ -4,11 +4,13 @@ import { SPECIES_BY_ID } from './data/fish'
 import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from './data/aquarium'
 import { EQUIPMENT, SHELVES, STORAGE_MAX_SLOTS, STORAGE_RACK_CAPACITY, STORAGE_TANK_PRICE, storageCapacity, storageUsed } from './data/shop'
 import { DECOR } from './data/decor'
+import { FOOD } from './data/food'
 import { FURNITURE } from './data/furniture'
 import { ROOM_BY_ID } from './data/rooms'
 import { DAY_DURATION_SECONDS } from './timing'
 import { allAquariums, canStock, fitAquariums, recalcWater, tickWater, usedVolume } from './sim/aquarium'
 import { updateHealth, feedFish } from './sim/health'
+import { canEatFood } from './sim/food'
 import { availableStock, buyPrice, dailyUpkeep, wholesalePrice } from './sim/economy'
 import { arrivalInterval, generateOrder, shopAttractiveness, updateMarket } from './sim/buyers'
 import { clearSave, loadState, saveState } from './save'
@@ -20,9 +22,6 @@ import type { AquariumState, DecorKind, EquipmentId, FishInstance, FishSpecies, 
 const TANK = { width: 960, height: 420 }
 const LOG_LIMIT = 40
 let idc = 1
-
-const FEED_COST = 5
-const FEED_AMOUNT = 30
 
 let state: GameState = loadState()
 
@@ -510,26 +509,41 @@ onInstallEquipment(id, aqId) {
     pushLog(`${SPECIES_BY_ID[fish.speciesId].name} убрана с аквариума в склад`, 'info')
     bump()
   },
-  onFeed(aqId, fishId) {
+  onFeed(aqId, fishId, foodId) {
     const aq = aquariumById(aqId)
     if (!aq) return
     if (aq.fish.length === 0) return
-    if (state.money < FEED_COST) {
-      ui.flash('Не хватает денег на корм!')
+    const def = FOOD[foodId]
+    if (!def) return
+    const entry = state.shop.foodStock.find((f) => f.id === foodId)
+    if (!entry || entry.count <= 0) {
+      ui.flash('Нет корма на складе! Купите в «Магазине» → «Корм»')
       return
     }
-    state.money -= FEED_COST
-    let overfeed = 0
     const targets = fishId ? aq.fish.filter((f) => f.id === fishId) : aq.fish
-    for (const f of targets) {
-      if (feedFish(f, FEED_AMOUNT)) overfeed++
+    const feedable = targets.filter((f) => canEatFood(SPECIES_BY_ID[f.speciesId], def))
+    if (feedable.length === 0) {
+      ui.flash(fishId ? 'Эта рыба не ест этот корм (размер или диета)' : 'Никто в аквариуме не ест этот корм')
+      return
     }
-    pushLog(
-      overfeed > 0
-        ? `Кормление в «${aq.name}»: ${targets.length} рыб, ${overfeed} перекормлено −${FEED_COST}₽`
-        : `Покорено рыбы в «${aq.name}» −${FEED_COST}₽`,
-      'info',
-    )
+    for (const f of feedable) feedFish(f, def.satiety)
+    entry.count -= 1
+    if (entry.count <= 0) state.shop.foodStock = state.shop.foodStock.filter((x) => x.id !== foodId)
+    pushLog(`Кормление в «${aq.name}»: ${feedable.length} рыб кормом «${def.name}» (−1 порция)`, 'info')
+    bump()
+  },
+  onBuyFood(id) {
+    const def = FOOD[id]
+    if (!def) return
+    if (state.money < def.price) {
+      ui.flash('Не хватает денег!')
+      return
+    }
+    state.money -= def.price
+    const entry = state.shop.foodStock.find((f) => f.id === id)
+    if (entry) entry.count += def.jarPortions
+    else state.shop.foodStock.push({ id, count: def.jarPortions, storedDays: 0 })
+    pushLog(`Куплен корм «${def.name}» за ${def.price}₽ (${def.jarPortions} порций)`, 'buy')
     bump()
   },
   onBuyFishToStorage(speciesId) {
@@ -732,10 +746,28 @@ function tick(dt: number): void {
   if (state.nextVisitorIn <= 0) tryArrive()
 }
 
+function advanceFoodSpoilage(): void {
+  let lost = 0
+  for (const f of state.shop.foodStock) {
+    const def = FOOD[f.id]
+    if (def && def.kind === 'live') f.storedDays += 1
+  }
+  state.shop.foodStock = state.shop.foodStock.filter((f) => {
+    const def = FOOD[f.id]
+    if (def && def.kind === 'live' && def.shelfLifeDays != null && f.storedDays >= def.shelfLifeDays) {
+      lost += f.count
+      return false
+    }
+    return true
+  })
+  if (lost > 0) pushLog(`${lost} порций живого корма испортились на складе`, 'warn')
+}
+
 function advanceDay(): void {
   state.day += 1
   state.daySeconds = 0
   updateMarket(state)
+  advanceFoodSpoilage()
   const cost = dailyUpkeep(state, SPECIES_BY_ID)
   state.money -= cost
   pushLog(`День ${state.day}: рынок изменился, аренда и содержание −${cost}₽`, 'money')

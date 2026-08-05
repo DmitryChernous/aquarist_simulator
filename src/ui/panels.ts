@@ -3,17 +3,25 @@ import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from '../data/aq
 import type { AquariumModel } from '../data/aquarium'
 import { EQUIPMENT, EQUIPMENT_IDS, SHELVES, STORAGE_MAX_SLOTS, STORAGE_RACK_CAPACITY, STORAGE_TANK_PRICE, shelfLoadLeft, shelfUsedLiters, storageCapacity, storageUsed } from '../data/shop'
 import { DECOR, DECOR_KINDS } from '../data/decor'
+import { FOOD, FOOD_IDS, FOOD_KIND_LABEL, FOOD_SIZE_LABEL } from '../data/food'
 import { ROOMS, ROOM_BY_ID } from '../data/rooms'
 import { FURNITURE, FURNITURE_IDS, furnitureCount } from '../data/furniture'
 import { HALL_HEIGHT, HALL_WIDTH, ROOM_SHELF_CELL_CAPACITY, roomShelvesTotalCells, shelfCellSize } from './renderHall'
 import { shopAttractiveness, tankAttractiveness } from '../sim/buyers'
 import { availableStock, buyPrice, decorStock, equipmentStock, retailPrice, wholesalePrice } from '../sim/economy'
+import { canEatFood, foodPortions, foodStockEntries, freshnessLeft } from '../sim/food'
 import { canStock, maxFitOnShelf, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
 import { fishWellbeing } from '../sim/wellbeing'
 import { VERSION } from '../version'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
-import type { AquariumState, DecorDef, DecorKind, EquipmentId, FishSpecies, FurnitureId, GameState, RoomId, ShelfState, ShopState } from '../types'
+import type { AquariumState, DecorDef, DecorKind, EquipmentId, FishDiet, FishSpecies, FoodId, FurnitureId, GameState, RoomId, ShelfState, ShopState } from '../types'
 import type { WellBeingReport } from '../sim/wellbeing'
+
+const DIET_LABEL: Record<FishDiet, string> = {
+  carnivore: 'хищники',
+  herbivore: 'растительноядные',
+  omnivore: 'всеядные',
+}
 
 export interface UIActions {
   onBuyShelf(specId: string, roomId: RoomId): void
@@ -44,7 +52,8 @@ export interface UIActions {
   onSellRackEquipment(id: EquipmentId): void
   onStockToAquarium(speciesId: string, aqId: string, count: number): void
   onMoveToStorage(aqId: string, fishId: string): void
-  onFeed(aqId: string, fishId: string | null): void
+  onFeed(aqId: string, fishId: string | null, foodId: FoodId): void
+  onBuyFood(id: FoodId): void
   onBuyFishToStorage(speciesId: string): void
   onWholesaleSell(speciesId: string): void
   onFulfillOrder(orderId: string): void
@@ -208,6 +217,7 @@ export function buildApp(actions: UIActions) {
   const storeGrid = app.querySelector<HTMLDivElement>('.store-grid')!
   const decorStore = app.querySelector<HTMLDivElement>('.decor-store')!
   const equipStore = app.querySelector<HTMLDivElement>('.equip-store')!
+  const foodStore = app.querySelector<HTMLDivElement>('.food-store')!
   const storeTabs = Array.from(app.querySelectorAll<HTMLButtonElement>('[data-group="sale"] .seg-btn'))
   const storeControls = app.querySelector<HTMLDivElement>('.store-controls')!
   const saleGroup = app.querySelector<HTMLDivElement>('[data-group="sale"]')!
@@ -238,6 +248,9 @@ export function buildApp(actions: UIActions) {
   let equipCatFilter = 'all'
   let equipSort = 'price'
   let furnSort = 'price'
+  let foodKindFilter: 'all' | 'dry' | 'live' = 'all'
+  let foodSizeFilter: 'all' | 'small' | 'medium' | 'large' = 'all'
+  let foodSort = 'price'
 
   const EQUIP_CATEGORY_LABEL: Record<string, string> = {
     filter: 'Фильтры', pump: 'Помпы', light: 'Лампы', heater: 'Нагреватели', co2: 'Углекислый газ', measure: 'Измерение',
@@ -251,16 +264,17 @@ export function buildApp(actions: UIActions) {
   let editInput: HTMLInputElement | null = null
   let aqNameBox: HTMLElement | null = null
 
-  function setStoreSection(v: 'fish' | 'decor' | 'equip'): void {
+  function setStoreSection(v: 'fish' | 'decor' | 'equip' | 'food'): void {
     activeStoreMode = 'sale'
     activeStoreSection = v
     for (const b of storeTabs) b.classList.toggle('active', b.dataset.store === v)
     storeGrid.style.display = v === 'fish' ? '' : 'none'
     decorStore.style.display = v === 'decor' ? '' : 'none'
     equipStore.style.display = v === 'equip' ? '' : 'none'
+    foodStore.style.display = v === 'food' ? '' : 'none'
     renderStoreControls()
   }
-  for (const b of storeTabs) b.addEventListener('click', () => setStoreSection((b.dataset.store as 'fish' | 'decor' | 'equip') ?? 'fish'))
+  for (const b of storeTabs) b.addEventListener('click', () => setStoreSection((b.dataset.store as 'fish' | 'decor' | 'equip' | 'food') ?? 'fish'))
   setStoreSection('fish')
 
   function setFurnSection(v: 'shelves' | 'equip' | 'furn' | 'aquariums'): void {
@@ -1016,9 +1030,9 @@ export function buildApp(actions: UIActions) {
     const fishWrap = el('div')
     if (aq.fish.length === 0) fishWrap.append(el('div', 'empty', 'Аквариум пуст.'))
 
-    const feedAll = el('button', 'btn small', `Кормить всех (5₽)`)
-    feedAll.disabled = s.money < 5 || aq.fish.length === 0
-    feedAll.addEventListener('click', () => actions.onFeed(aq.id, null))
+    const feedAll = el('button', 'btn small', 'Кормить всех')
+    feedAll.disabled = aq.fish.length === 0
+    feedAll.addEventListener('click', () => openFeedModal(s, aq.id, null))
     body.append(feedAll)
 
     for (const fish of aq.fish) {
@@ -1040,6 +1054,53 @@ export function buildApp(actions: UIActions) {
       fishWrap.append(row)
     }
     body.append(fishWrap)
+  }
+
+  function openFeedModal(s: GameState, aqId: string, fishId: string | null): void {
+    const aq = allAquariums(s).find((a) => a.id === aqId)
+    if (!aq) return
+    const { body, close } = overlay(`Покормить: «${aq.name}»`)
+    const targets = fishId ? aq.fish.filter((f) => f.id === fishId) : aq.fish
+    const render = (): void => {
+      body.innerHTML = ''
+      body.append(el('div', 'comp-hint', fishId ? 'Выберите корм, который съест эта рыба:' : 'Корм съедают те рыбы, которым он подходит по размеру и диете.'))
+      const entries = foodStockEntries(s)
+      if (entries.length === 0) {
+        body.append(el('div', 'empty', 'На складе нет корма.'))
+        const go = el('button', 'btn buy', 'Купить корм в магазине →')
+        go.addEventListener('click', () => {
+          close()
+          switchTab(app, 'store')
+          setStoreMode('sale')
+          setStoreSection('food')
+        })
+        body.append(go)
+        return
+      }
+      for (const entry of entries) {
+        const def = FOOD[entry.id]
+        const feedable = targets.filter((f) => canEatFood(SPECIES_BY_ID[f.speciesId], def))
+        const fresh = freshnessLeft(entry)
+        const row = el('div', 'comp-row')
+        row.append(el('span', 'comp-name', `${def.name} — ${entry.count} порций`))
+        if (fresh != null) {
+          const tag = el('span', fresh <= 1 ? 'live-warn' : 'badge', fresh === 0 ? 'испортится сегодня' : `свежесть: ${fresh} дн.`)
+          row.append(tag)
+        }
+        const fitLbl = fishId ? (feedable.length > 0 ? 'подходит' : 'не подходит') : `${feedable.length}/${targets.length} съедят`
+        const fit = el('span', feedable.length > 0 ? 'feed-ok' : 'feed-no', fitLbl)
+        row.append(fit)
+        const btn = el('button', 'btn small', 'Покормить')
+        btn.disabled = feedable.length === 0
+        btn.addEventListener('click', () => {
+          actions.onFeed(aq.id, fishId, entry.id)
+          render()
+        })
+        row.append(btn)
+        body.append(row)
+      }
+    }
+    render()
   }
 
   function openFishDetailModal(s: GameState, aqId: string, fishId: string): void {
@@ -1076,9 +1137,8 @@ export function buildApp(actions: UIActions) {
       rowEl.append(lbl, barWrap)
       body.appendChild(rowEl)
     }
-    const feed = el('button', 'btn', `Покормить (5₽)`)
-    feed.disabled = s.money < 5
-    feed.addEventListener('click', () => actions.onFeed(aq.id, fish.id))
+    const feed = el('button', 'btn', 'Покормить')
+    feed.addEventListener('click', () => openFeedModal(s, aq.id, fish.id))
     body.appendChild(feed)
     const toStorage = el('button', 'btn danger', 'В склад')
     toStorage.addEventListener('click', () => actions.onMoveToStorage(aq.id, fish.id))
@@ -1232,7 +1292,7 @@ export function buildApp(actions: UIActions) {
     roomAside.append(summary)
 
     const tabs = el('div', 'store-tabs')
-    for (const [key, label] of [['all', 'Все'], ['fish', 'Рыбы'], ['equip', 'Оборудование'], ['decor', 'Декор']] as const) {
+    for (const [key, label] of [['all', 'Все'], ['fish', 'Рыбы'], ['food', 'Корма'], ['equip', 'Оборудование'], ['decor', 'Декор']] as const) {
       const b = el('button', key === storageFilter ? 'seg-btn active' : 'seg-btn', label)
       b.addEventListener('click', () => { storageFilter = key; renderRoomAside(state) })
       tabs.append(b)
@@ -1255,6 +1315,21 @@ export function buildApp(actions: UIActions) {
         const btn = el('button', 'btn small', `Опт — ${wholesalePrice(species, f)}₽/шт`)
         btn.addEventListener('click', () => { actions.onWholesaleSell(item.speciesId); renderRoomAside(state) })
         row.append(dot, el('span', 'stock-name', `${species.name} — ${item.count} шт.`), btn)
+        list.append(row)
+      }
+    }
+
+    if (storageFilter === 'all' || storageFilter === 'food') {
+      const foodHead = el('div', 'list-title', 'Корма')
+      list.append(foodHead)
+      const entries = foodStockEntries(state)
+      if (entries.length === 0) list.append(el('div', 'empty', 'Нет корма.'))
+      else for (const entry of entries) {
+        const def = FOOD[entry.id]
+        const fresh = freshnessLeft(entry)
+        const row = el('div', 'comp-row')
+        row.append(el('span', 'comp-name', `${def.name} — ${entry.count} порций`))
+        if (fresh != null) row.append(el('span', fresh <= 1 ? 'live-warn' : 'badge', fresh === 0 ? 'испортится сегодня' : `свежесть: ${fresh} дн.`))
         list.append(row)
       }
     }
@@ -1505,6 +1580,22 @@ export function buildApp(actions: UIActions) {
       chipsRow.append(el('span', 'filter-label', 'Категория:'))
       chipsRow.append(chip('Все', equipCatFilter === 'all', () => { equipCatFilter = 'all'; renderStore(latestState) }))
       for (const key of Object.keys(EQUIP_CATEGORY_LABEL)) chipsRow.append(chip(EQUIP_CATEGORY_LABEL[key], equipCatFilter === key, () => { equipCatFilter = key; renderStore(latestState) }))
+    } else if (isSale && activeStoreSection === 'food') {
+      const sortSel = el('select')
+      for (const [v, l] of [['price', 'Сортировка: цена'], ['priceDesc', 'Цена ↓'], ['portions', 'Порций в банке'], ['satiety', 'Сытость'], ['name', 'Имя']] as const) {
+        const o = el('option'); o.value = v; o.textContent = l; if (foodSort === v) o.selected = true; sortSel.append(o)
+      }
+      sortSel.addEventListener('change', () => { foodSort = sortSel.value; renderStore(latestState) })
+      top.append(sortSel)
+      chipsRow.append(el('span', 'filter-label', 'Тип:'))
+      chipsRow.append(chip('Все', foodKindFilter === 'all', () => { foodKindFilter = 'all'; renderStore(latestState) }))
+      chipsRow.append(chip('Сухие', foodKindFilter === 'dry', () => { foodKindFilter = 'dry'; renderStore(latestState) }))
+      chipsRow.append(chip('Живые', foodKindFilter === 'live', () => { foodKindFilter = 'live'; renderStore(latestState) }))
+      chipsRow.append(el('span', 'filter-label', 'Размер:'))
+      chipsRow.append(chip('Все', foodSizeFilter === 'all', () => { foodSizeFilter = 'all'; renderStore(latestState) }))
+      chipsRow.append(chip('Мелкий', foodSizeFilter === 'small', () => { foodSizeFilter = 'small'; renderStore(latestState) }))
+      chipsRow.append(chip('Средний', foodSizeFilter === 'medium', () => { foodSizeFilter = 'medium'; renderStore(latestState) }))
+      chipsRow.append(chip('Крупный', foodSizeFilter === 'large', () => { foodSizeFilter = 'large'; renderStore(latestState) }))
     } else {
       const sortSel = el('select')
       for (const [v, l] of [['price', 'Сортировка: цена'], ['name', 'Имя']] as const) {
@@ -1523,10 +1614,12 @@ export function buildApp(actions: UIActions) {
     storeGrid.innerHTML = ''
     equipStore.innerHTML = ''
     decorStore.innerHTML = ''
+    foodStore.innerHTML = ''
 
     renderStoreFish(state)
     renderStoreDecor(state)
     renderStoreEquip(state)
+    renderStoreFood(state)
     renderFurnStore(state)
   }
 
@@ -1664,6 +1757,54 @@ export function buildApp(actions: UIActions) {
       equipStore.append(card)
     }
     if (ids.length === 0) equipStore.append(el('div', 'store-empty', 'Ничего не найдено'))
+  }
+
+  function renderStoreFood(state: GameState): void {
+    let ids = FOOD_IDS
+    const q = storeSearch.trim().toLowerCase()
+    if (q) ids = ids.filter((id) => FOOD[id].name.toLowerCase().includes(q))
+    if (foodKindFilter !== 'all') ids = ids.filter((id) => FOOD[id].kind === foodKindFilter)
+    if (foodSizeFilter !== 'all') ids = ids.filter((id) => FOOD[id].size === foodSizeFilter)
+    const cmp: Record<string, (a: FoodId, b: FoodId) => number> = {
+      price: (a, b) => FOOD[a].price - FOOD[b].price,
+      priceDesc: (a, b) => FOOD[b].price - FOOD[a].price,
+      portions: (a, b) => FOOD[a].jarPortions - FOOD[b].jarPortions,
+      satiety: (a, b) => FOOD[a].satiety - FOOD[b].satiety,
+      name: (a, b) => FOOD[a].name.localeCompare(FOOD[b].name, 'ru'),
+    }
+    ids.sort(cmp[foodSort] ?? cmp.price)
+    for (const id of ids) {
+      const def = FOOD[id]
+      const owned = foodPortions(state, id)
+      const card = el('div', 'store-card')
+      const head = el('div', 'store-head')
+      head.append(
+        el('strong', 'store-name', def.name),
+        el('span', 'badge', FOOD_KIND_LABEL[def.kind]),
+        el('span', 'badge', `Размер: ${FOOD_SIZE_LABEL[def.size]}`),
+      )
+      const dietLbl = def.diets === 'all' ? 'все диеты' : def.diets.map((d) => DIET_LABEL[d]).join(', ')
+      card.append(
+        head,
+        el('div', 'store-desc', def.desc),
+        (() => {
+          const p = el('div', 'store-prices')
+          p.append(el('span', '', `Порций в банке: ${def.jarPortions} · сытость: +${def.satiety}`))
+          if (def.kind === 'live' && def.shelfLifeDays != null) p.append(el('span', 'live-warn', `Хранить в холоде: портится через ${def.shelfLifeDays} дн.`))
+          return p
+        })(),
+        el('div', 'store-params', `Подходит: ${dietLbl}`),
+      )
+      const btn = el('button', 'btn buy', `Купить банку — ${def.price}₽`)
+      const noMoney = state.money < def.price
+      btn.disabled = noMoney
+      btn.addEventListener('click', () => actions.onBuyFood(id))
+      card.append(btn)
+      if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${def.price}₽`))
+      else if (owned > 0) card.append(el('div', 'feed-ok', `На складе: ${owned} порций`))
+      foodStore.append(card)
+    }
+    if (ids.length === 0) foodStore.append(el('div', 'store-empty', 'Ничего не найдено'))
   }
 
   function openBuyRoomModal(title: string, action: (roomId: RoomId) => void, canPlaceIn?: (roomId: RoomId) => boolean): void {
@@ -1926,11 +2067,13 @@ function buildLayout(): HTMLElement {
     segBtn('fish', 'Рыбы'),
     segBtn('decor', 'Декор'),
     segBtn('equip', 'Оборудование'),
+    segBtn('food', 'Корм'),
   )
   const fishStore = el('div', 'store-grid')
   const decorStore = el('div', 'decor-store')
   const equipStore = el('div', 'equip-store')
-  saleGroup.append(storeTabs, fishStore, decorStore, equipStore)
+  const foodStore = el('div', 'decor-store food-store')
+  saleGroup.append(storeTabs, fishStore, decorStore, equipStore, foodStore)
 
   const furnGroup = el('div', 'store-group')
   furnGroup.dataset.group = 'furn'

@@ -1,3 +1,35 @@
+export type FishDiet = 'carnivore' | 'herbivore' | 'omnivore'
+export type FoodSize = 'small' | 'medium' | 'large'
+export type FoodId =
+  | 'flakes'
+  | 'granulesS'
+  | 'granulesL'
+  | 'tablets'
+  | 'spirulina'
+  | 'sticks'
+  | 'artemia'
+  | 'bloodworm'
+  | 'daphnia'
+
+export interface FoodDef {
+  id: FoodId
+  name: string
+  kind: 'dry' | 'live'
+  size: FoodSize
+  diets: FishDiet[] | 'all' // 'all' — едят все диеты подходящего размера
+  desc: string
+  price: number // цена за банку/партию
+  jarPortions: number // порций в одной банке
+  satiety: number // очков сытости за одну порцию
+  shelfLifeDays?: number // живые корма: через сколько дней портятся
+}
+
+export interface FoodStock {
+  id: FoodId
+  count: number // доступно порций
+  storedDays: number // сколько прошло дней после покупки (для порчи)
+}
+
 export interface FishSpecies {
   id: string
   name: string
@@ -23,6 +55,8 @@ export interface FishSpecies {
   vegMax: number
   schooling: boolean
   appeal: number
+  diet: FishDiet // чем питается: carnivore/herbivore/omnivore
+  mouthSize: FoodSize // какой размер корма способна съесть
 }
 
 // --- Вода (расширяемый реестр параметров) ---
@@ -223,6 +257,7 @@ export interface ShopState {
   furniture: Partial<Record<FurnitureId, number>> // купленная мебель (вкл. витрину)
   rackInventory: EquipmentId[] // оборудование на стеллаже склада
   rackDecor: DecorKind[] // декорации на складе
+  foodStock: FoodStock[] // запасы корма (порции + свежесть)
 }
 
 export interface RackState {

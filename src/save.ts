@@ -67,6 +67,7 @@ export function defaultState(): GameState {
       furniture: {},
       rackInventory: ['heater', 'thermometer', 'airPump', 'filter'],
       rackDecor: [],
+      foodStock: [],
     },
     shelves: [{ id: 'sh1', name: 'Стойка 1', roomId: 'hall', pos: { x: 0, y: 0 }, slabs, loadCapacityL: 300, specId: 'compact', aquariums: [aq] }],
     racks: [{ id: 'r1', roomId: 'storage' }],
@@ -222,6 +223,7 @@ export function loadState(): GameState {
           furniture: migrateFurniture(old.shop),
           rackInventory: Array.isArray(old.shop?.rackInventory) ? old.shop.rackInventory : [],
           rackDecor: Array.isArray(old.shop?.rackDecor) ? old.shop.rackDecor : [],
+          foodStock: [],
         },
         racks: Array.from({ length: rackCount }, (_, i) => ({ id: `r${i + 1}`, roomId: 'storage' as RoomId })),
         shelves: [
