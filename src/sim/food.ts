@@ -20,9 +20,15 @@ export function foodStockEntries(state: GameState): FoodStock[] {
   return state.shop.foodStock.filter((f) => FOOD[f.id] && f.count > 0)
 }
 
+// Дней до порчи живого корма при текущих условиях хранения:
+// без холодильника живому корму хватает ровно на день, в холодильнике — на срок годности.
+export function liveShelfDays(def: FoodDef, fridge: boolean): number {
+  return fridge ? (def.shelfLifeDays ?? 1) : 1
+}
+
 // Сколько дней осталось до порчи (null для сухих).
-export function freshnessLeft(entry: FoodStock): number | null {
+export function freshnessLeft(entry: FoodStock, fridge: boolean): number | null {
   const def = FOOD[entry.id]
-  if (!def || def.kind !== 'live' || def.shelfLifeDays == null) return null
-  return Math.max(0, def.shelfLifeDays - entry.storedDays)
+  if (!def || def.kind !== 'live') return null
+  return Math.max(0, liveShelfDays(def, fridge) - entry.storedDays)
 }

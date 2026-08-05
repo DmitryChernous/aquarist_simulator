@@ -64,6 +64,7 @@ export function defaultState(): GameState {
     money: START_MONEY,
     shop: {
       cashRegister: false,
+      fridge: false,
       furniture: {},
       rackInventory: ['heater', 'thermometer', 'airPump', 'filter'],
       rackDecor: [],
@@ -220,6 +221,7 @@ export function loadState(): GameState {
         money: Number.isFinite(Number(old.money)) ? Number(old.money) : START_MONEY,
         shop: {
           cashRegister: Boolean(old.shop?.cashRegister),
+          fridge: Boolean(old.shop?.fridge),
           furniture: migrateFurniture(old.shop),
           rackInventory: Array.isArray(old.shop?.rackInventory) ? old.shop.rackInventory : [],
           rackDecor: Array.isArray(old.shop?.rackDecor) ? old.shop.rackDecor : [],

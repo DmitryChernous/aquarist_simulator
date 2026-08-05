@@ -254,6 +254,7 @@ export interface FurnitureDef {
 // - «Витрина» (displayRack) — мебель в зале: демонстрирует ассортимент покупателям.
 export interface ShopState {
   cashRegister: boolean
+  fridge: boolean // холодильник для живого корма (замедляет порчу)
   furniture: Partial<Record<FurnitureId, number>> // купленная мебель (вкл. витрину)
   rackInventory: EquipmentId[] // оборудование на стеллаже склада
   rackDecor: DecorKind[] // декорации на складе

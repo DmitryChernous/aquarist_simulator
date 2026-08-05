@@ -10,7 +10,7 @@ import { ROOM_BY_ID } from './data/rooms'
 import { DAY_DURATION_SECONDS } from './timing'
 import { allAquariums, canStock, fitAquariums, recalcWater, tickWater, usedVolume } from './sim/aquarium'
 import { updateHealth, feedFish } from './sim/health'
-import { canEatFood } from './sim/food'
+import { canEatFood, liveShelfDays } from './sim/food'
 import { availableStock, buyPrice, dailyUpkeep, wholesalePrice } from './sim/economy'
 import { arrivalInterval, generateOrder, shopAttractiveness, updateMarket } from './sim/buyers'
 import { clearSave, loadState, saveState } from './save'
@@ -201,14 +201,19 @@ const ui = buildApp({
     bump()
   },
   onBuyShopItem(kind) {
-    const PRICES = { cashRegister: 300 }
+    const PRICES = { cashRegister: 300, fridge: 250 }
     if (state.money < PRICES[kind]) {
       ui.flash('Не хватает денег!')
       return
     }
     state.money -= PRICES[kind]
-    if (kind === 'cashRegister') state.shop.cashRegister = true
-    pushLog(`Куплено оборудование зала за ${PRICES[kind]}₽`, 'buy')
+    if (kind === 'cashRegister') {
+      state.shop.cashRegister = true
+      pushLog('Куплена касса за 300₽ — покупатели приходят чаще', 'buy')
+    } else if (kind === 'fridge') {
+      state.shop.fridge = true
+      pushLog('Куплен холодильник для живого корма за 250₽ — порча замедлена', 'buy')
+    }
     bump()
   },
   onBuyRack(roomId) {
@@ -546,6 +551,10 @@ onInstallEquipment(id, aqId) {
       if (def.kind === 'live') entry.storedDays = 0 // свежая партия
     } else state.shop.foodStock.push({ id, count: def.jarPortions, storedDays: 0 })
     pushLog(`Куплен корм «${def.name}» за ${def.price}₽ (${def.jarPortions} порций)`, 'buy')
+    if (def.kind === 'live' && !state.shop.fridge) {
+      pushLog('Нет холодильника: живой корм испортится к концу дня. Купите его в «Обустройство → Оснащение»', 'warn')
+      ui.flash('Живой корм требует холодильника!')
+    }
     bump()
   },
   onBuyFishToStorage(speciesId) {
@@ -754,13 +763,13 @@ function advanceFoodSpoilage(): void {
     const def = FOOD[f.id]
     if (!def || def.kind !== 'live') continue
     f.storedDays += 1
-    if (def.shelfLifeDays != null && f.storedDays >= def.shelfLifeDays) {
+    if (f.storedDays >= liveShelfDays(def, state.shop.fridge)) {
       spoiled.set(def.name, (spoiled.get(def.name) ?? 0) + f.count)
     }
   }
   state.shop.foodStock = state.shop.foodStock.filter((f) => {
     const def = FOOD[f.id]
-    return !(def && def.kind === 'live' && def.shelfLifeDays != null && f.storedDays >= def.shelfLifeDays)
+    return !(def && def.kind === 'live' && f.storedDays >= liveShelfDays(def, state.shop.fridge))
   })
   if (spoiled.size > 0) {
     const list = [...spoiled.entries()].map(([name, c]) => `${name} — ${c} порц.`).join(', ')

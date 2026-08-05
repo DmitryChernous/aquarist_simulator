@@ -29,7 +29,7 @@ export interface UIActions {
   onMoveAquarium(aqId: string, targetShelfId: string): void
   onViewRoom(roomId: RoomId): void
   onSellShelf(shelfId: string): void
-  onBuyShopItem(kind: 'cashRegister'): void
+  onBuyShopItem(kind: 'cashRegister' | 'fridge'): void
   onBuyRack(roomId: RoomId): void
   onBuyFurniture(id: FurnitureId): void
   onBuyAquarium(modelId: string, shelfId: string, qty: number): void
@@ -1080,11 +1080,12 @@ export function buildApp(actions: UIActions) {
       for (const entry of entries) {
         const def = FOOD[entry.id]
         const feedable = targets.filter((f) => canEatFood(SPECIES_BY_ID[f.speciesId], def))
-        const fresh = freshnessLeft(entry)
+        const fresh = freshnessLeft(entry, s.shop.fridge)
         const row = el('div', 'comp-row')
         row.append(el('span', 'comp-name', `${def.name} — ${entry.count} порций`))
         if (fresh != null) {
-          const tag = el('span', fresh <= 1 ? 'live-warn' : 'badge', fresh === 0 ? 'испортится сегодня' : `свежесть: ${fresh} дн.`)
+          const noFridge = def.kind === 'live' && !s.shop.fridge
+          const tag = el('span', noFridge || fresh <= 1 ? 'live-warn' : 'badge', noFridge ? 'портится к концу дня (нет холодильника)' : fresh === 0 ? 'испортится сегодня' : `свежесть: ${fresh} дн.`)
           row.append(tag)
         }
         const fitLbl = fishId ? (feedable.length > 0 ? 'подходит' : 'не подходит') : `${feedable.length}/${targets.length} съедят`
@@ -1322,14 +1323,19 @@ export function buildApp(actions: UIActions) {
     if (storageFilter === 'all' || storageFilter === 'food') {
       const foodHead = el('div', 'list-title', 'Корма')
       list.append(foodHead)
+      if (state.shop.fridge) list.append(el('div', 'feed-ok', 'Холодильник есть — живой корм хранится свой срок'))
+      else list.append(el('div', 'live-warn', 'Нет холодильника — живой корм портится к концу дня'))
       const entries = foodStockEntries(state)
       if (entries.length === 0) list.append(el('div', 'empty', 'Нет корма.'))
       else for (const entry of entries) {
         const def = FOOD[entry.id]
-        const fresh = freshnessLeft(entry)
+        const fresh = freshnessLeft(entry, state.shop.fridge)
         const row = el('div', 'comp-row')
         row.append(el('span', 'comp-name', `${def.name} — ${entry.count} порций`))
-        if (fresh != null) row.append(el('span', fresh <= 1 ? 'live-warn' : 'badge', fresh === 0 ? 'испортится сегодня' : `свежесть: ${fresh} дн.`))
+        if (fresh != null) {
+          const noFridge = def.kind === 'live' && !state.shop.fridge
+          row.append(el('span', noFridge || fresh <= 1 ? 'live-warn' : 'badge', noFridge ? 'портится к концу дня (нет холодильника)' : fresh === 0 ? 'испортится сегодня' : `свежесть: ${fresh} дн.`))
+        }
         list.append(row)
       }
     }
@@ -1790,7 +1796,10 @@ export function buildApp(actions: UIActions) {
         (() => {
           const p = el('div', 'store-prices')
           p.append(el('span', '', `Порций в банке: ${def.jarPortions} · сытость: +${def.satiety}`))
-          if (def.kind === 'live' && def.shelfLifeDays != null) p.append(el('span', 'live-warn', `Хранить в холоде: портится через ${def.shelfLifeDays} дн.`))
+          if (def.kind === 'live' && def.shelfLifeDays != null) {
+            if (state.shop.fridge) p.append(el('span', 'badge', `В холодильнике хранится ${def.shelfLifeDays} дн.`))
+            else p.append(el('span', 'live-warn', `Без холодильника испортится к концу дня (в холоде — ${def.shelfLifeDays} дн.)`))
+          }
           return p
         })(),
         el('div', 'store-params', `Подходит: ${dietLbl}`),
@@ -1802,6 +1811,7 @@ export function buildApp(actions: UIActions) {
       card.append(btn)
       if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${def.price}₽`))
       else if (owned > 0) card.append(el('div', 'feed-ok', `На складе: ${owned} порций`))
+      if (def.kind === 'live' && !state.shop.fridge) card.append(storeReason('Нет холодильника — купите его в «Обустройство → Оснащение»'))
       foodStore.append(card)
     }
     if (ids.length === 0) foodStore.append(el('div', 'store-empty', 'Ничего не найдено'))
@@ -1891,6 +1901,21 @@ export function buildApp(actions: UIActions) {
     displayCard.append(displayBtn)
     if (noMoneyDisplay) displayCard.append(storeReason('Не хватает денег: нужно 700₽'))
     furnEquip.append(displayCard)
+
+    const fridgeCard = el('div', 'store-card')
+    fridgeCard.append(
+      el('strong', 'store-name', shop.fridge ? 'Холодильник' : 'Холодильник для корма'),
+      el('div', 'store-desc', shop.fridge ? 'Установлен — живой корм хранится свой срок годности' : 'Хранит живой корм: без него артемия/мотыль/дафния портятся к концу дня'),
+    )
+    if (!shop.fridge) {
+      const fridgeBtn = el('button', 'btn buy', 'Купить — 250₽')
+      const noMoneyFridge = state.money < 250
+      fridgeBtn.disabled = noMoneyFridge
+      fridgeBtn.addEventListener('click', () => actions.onBuyShopItem('fridge'))
+      fridgeCard.append(fridgeBtn)
+      if (noMoneyFridge) fridgeCard.append(storeReason('Не хватает денег: нужно 250₽'))
+    }
+    furnEquip.append(fridgeCard)
 
     furnFurn.innerHTML = ''
     for (const id of FURNITURE_IDS) {
