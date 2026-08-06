@@ -1797,6 +1797,7 @@ const top = el('div', 'store-controls-top')
   }
 
   function renderStoreContents(state: GameState): void {
+    if (!state) return
     storeGrid.innerHTML = ''
     storeFishDetail.innerHTML = ''
     equipStore.innerHTML = ''
