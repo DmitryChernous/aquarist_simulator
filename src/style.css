@@ -489,6 +489,45 @@ body {
   color: var(--ok);
   font-weight: 600;
 }
+.aq-capacity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.aq-capacity-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: #9fb0c4;
+}
+.aq-capacity-label {
+  color: #e8f1f5;
+  font-weight: 600;
+}
+.capacity-track {
+  height: 8px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.capacity-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: var(--ok);
+}
+.capacity-fill.high {
+  background: var(--warn);
+}
+.capacity-fill.full {
+  background: var(--dead);
+}
 .aq-card {
   border: 1px solid var(--border);
   border-radius: 8px;

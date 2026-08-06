@@ -10,7 +10,7 @@ import { HALL_HEIGHT, HALL_WIDTH, ROOM_SHELF_CELL_CAPACITY, roomShelvesTotalCell
 import { shopAttractiveness, tankAttractiveness } from '../sim/buyers'
 import { buyPrice, decorStock, equipmentStock, retailPrice, wholesalePrice } from '../sim/economy'
 import { canEatFood, foodPortions, foodStockEntries, freshnessLeft } from '../sim/food'
-import { canStock, fishRetailStock, maxFitOnShelf, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
+import { canStock, fishRetailStock, maxFitOnShelf, usedVolume, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
 import { fishWellbeing } from '../sim/wellbeing'
 import { VERSION } from '../version'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
@@ -908,6 +908,27 @@ export function buildApp(actions: UIActions) {
       ? `${aqRoom.icon} Помещение: ${aqRoom.name} · Стойка: «${aqShelf.name}»`
       : 'Аквариум не на стойке'))
     aqInfo.append(el('div', aq.decor.length === 0 ? 'aq-line sale-line' : 'aq-line', aq.decor.length === 0 ? 'Продажный (без декора): рыбу из него можно продавать в розницу' : 'Видовой аквариум: рыбу из него не продают — уберите декор, чтобы сделать продажным'))
+
+    // Индикатор вместимости (п.4 плана): занятые и свободные литры.
+    {
+      const used = usedVolume(aq)
+      const vol = aq.volume
+      const free = Math.max(0, vol - used)
+      const pct = Math.min(100, (used / vol) * 100)
+      const cap = el('div', 'aq-capacity')
+      const capTop = el('div', 'aq-capacity-top')
+      capTop.append(
+        el('span', 'aq-capacity-label', `Ёмкость: ${Math.round(used)} / ${vol} л`),
+        el('span', 'aq-capacity-free', `свободно ${Math.round(free)} л`),
+      )
+      const track = el('div', 'capacity-track')
+      const fill = el('div', 'capacity-fill')
+      fill.style.width = `${pct}%`
+      fill.classList.add(pct >= 100 ? 'full' : pct >= 80 ? 'high' : 'ok')
+      track.append(fill)
+      cap.append(capTop, track)
+      aqInfo.append(cap)
+    }
 
     const chip = (text: string, ok?: boolean): HTMLSpanElement => {
       const c = el('span', 'chip chip-' + (ok ? 'ok' : 'warn'), text)
