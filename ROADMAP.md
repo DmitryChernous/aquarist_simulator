@@ -586,3 +586,15 @@ Flash-сообщения были in-flow элементом внутри .hud-r
 Файлы: src/ui/panels.ts, src/main.ts, src/types.ts, src/save.ts, src/ui/render.ts, src/sim/buyers.ts, src/data/aquarium.ts, src/version.ts, package.json, PLAN.md, ROADMAP.md.
 
 Критерий: ввод в строке поиска не сбрасывает фокус; правая панель не видна на не-рыбных разделах; поиск сбрасывается при смене раздела/режима; механика «Дизайн» полностью удалена (без следов в типах, UI, канвасе и привлекательности).
+
+## 0.37.1 - Hotfix: краш при старте (Cannot read properties of null)
+
+Проблема: после 0.37.0 игра падала на загрузке в консоли «Cannot read properties of null (reading 'market')» в `fpStore`/`renderStoreFish`.
+
+Причина: в 0.37.0 `setStoreSection`/`setFurnSection`/`setStoreMode` стали вызывать `renderStoreContents(latestState)` для перерисовки контента; при инициализации `buildApp` вызывались `setFurnSection('shelves')` и `setStoreMode('sale')`, когда `latestState` ещё `null` — `renderStoreFish` обращался к `state.market`.
+
+Изменение: guard в `renderStoreContents` — ранний выход при `!state` (иначе null проваливался в рендер рыб).
+
+Файл: src/ui/panels.ts (renderStoreContents).
+
+Критерий: игра стартует без ошибок в консоли; магазин открывается и отображает рыбу.
