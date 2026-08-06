@@ -231,6 +231,10 @@ export function buildApp(actions: UIActions) {
   const modeButtons = Array.from(app.querySelectorAll<HTMLButtonElement>('.store-mode .seg-btn'))
   const logList = app.querySelector<HTMLUListElement>('.log-list')!
 
+  // Плавающий индикатор поставок: не занимает место в сетке магазина и не сдвигает карточки.
+  const purchasesPill = el('div', 'purchases-pill')
+  document.body.appendChild(purchasesPill)
+
   app.querySelector<HTMLButtonElement>('.btn-reset')!.addEventListener('click', () => actions.onReset())
   pauseBtn.addEventListener('click', () => actions.onTogglePause())
   for (const btn of speedBtns) btn.addEventListener('click', () => actions.onSetSpeed(Number(btn.dataset.speed)))
@@ -317,6 +321,7 @@ export function buildApp(actions: UIActions) {
   let lastPanelCheck = 0
   let lastDayPct = -1
   let renderedLogCount = 0
+  let lastPurchasesPillFp = ''
 
   function flash(message: string): void {
     hudFlash.textContent = message
@@ -344,6 +349,33 @@ export function buildApp(actions: UIActions) {
       checkPanels(state, false)
     }
     renderLogAppend(state)
+    renderPurchasesPill(state)
+  }
+
+  function renderPurchasesPill(state: GameState): void {
+    const show = state.purchases.length > 0 && activeTab === 'store'
+    purchasesPill.classList.toggle('show', show)
+    if (!show) return
+    const pending = new Map<string, { qty: number; day: number }>()
+    for (const p of state.purchases) {
+      const e = pending.get(p.speciesId) ?? { qty: 0, day: Infinity }
+      e.qty += p.qty
+      e.day = Math.min(e.day, p.arriveDay)
+      pending.set(p.speciesId, e)
+    }
+    const key = [...pending.entries()].map(([sid, e]) => `${sid}:${e.qty}:${e.day}`).join(',')
+    if (key === lastPurchasesPillFp) return
+    lastPurchasesPillFp = key
+    purchasesPill.innerHTML = ''
+    purchasesPill.append(el('div', 'purchases-pill-title', `В пути от поставщика (${state.purchases.length})`))
+    for (const [sid, e] of pending) {
+      const species = SPECIES_BY_ID[sid]
+      const row = el('div', 'comp-row')
+      const dot = el('span', 'dot')
+      dot.style.background = species.color
+      row.append(dot, el('span', 'comp-name', `${species.name} ×${e.qty}`), el('span', 'badge', `День ${e.day}`))
+      purchasesPill.append(row)
+    }
   }
 
   function updateHud(state: GameState, shopAtt: number, timeScale: number, paused: boolean): void {
@@ -1667,27 +1699,6 @@ export function buildApp(actions: UIActions) {
     items.sort(cmp[fishSort] ?? cmp.name)
 
     const byGroup = fishGroup === 'family' ? 'family' : fishGroup === 'region' ? 'region' : null
-
-    if (state.purchases.length > 0) {
-      const pending = new Map<string, { qty: number; day: number }>()
-      for (const p of state.purchases) {
-        const e = pending.get(p.speciesId) ?? { qty: 0, day: Infinity }
-        e.qty += p.qty
-        e.day = Math.min(e.day, p.arriveDay)
-        pending.set(p.speciesId, e)
-      }
-      const block = el('div', 'purchases-block')
-      block.append(el('div', 'list-title', 'В пути от поставщика'))
-      for (const [sid, e] of pending) {
-        const species = SPECIES_BY_ID[sid]
-        const row = el('div', 'comp-row')
-        const dot = el('span', 'dot')
-        dot.style.background = species.color
-        row.append(dot, el('span', 'comp-name', `${species.name} ×${e.qty}`), el('span', 'badge', `День ${e.day}`))
-        block.append(row)
-      }
-      storeGrid.prepend(block)
-    }
 
     let lastKey: string | null = null
     for (const { species, factor } of items) {
