@@ -66,7 +66,7 @@ export function defaultState(): GameState {
       cashRegister: false,
       fridge: false,
       furniture: {},
-      rackInventory: ['heater', 'thermometer', 'airPump', 'filter'],
+      rackInventory: ['heater', 'thermometer', 'airPump', 'filter', 'light', 'co2'],
       rackDecor: [],
       foodStock: [],
     },
