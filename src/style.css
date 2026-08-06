@@ -528,6 +528,21 @@ body {
 .capacity-fill.full {
   background: var(--dead);
 }
+.aq-capacity.warn {
+  border-color: rgba(245, 185, 66, 0.6);
+}
+.cap-note {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #9fb0c4;
+  line-height: 1.4;
+}
+.aq-capacity.warn .cap-note {
+  color: var(--warn);
+}
+.fx-box {
+  margin-top: 2px;
+}
 .aq-card {
   border: 1px solid var(--border);
   border-radius: 8px;

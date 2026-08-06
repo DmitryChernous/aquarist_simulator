@@ -8,7 +8,7 @@ import { FOOD } from './data/food'
 import { FURNITURE } from './data/furniture'
 import { ROOM_BY_ID } from './data/rooms'
 import { DAY_DURATION_SECONDS } from './timing'
-import { allAquariums, canStock, fishRetailStock, fitAquariums, isSellable, recalcWater, takeSellableFish, tickWater, usedVolume } from './sim/aquarium'
+import { allAquariums, canStock, fishRetailStock, fitAquariums, isSellable, orderForecast, recalcWater, takeSellableFish, tickWater, usedVolume } from './sim/aquarium'
 import { updateHealth, feedFish } from './sim/health'
 import { canEatFood, liveShelfDays } from './sim/food'
 import { buyPrice, dailyUpkeep, wholesalePrice } from './sim/economy'
@@ -587,6 +587,10 @@ onInstallEquipment(id, aqId) {
     const order: PurchaseOrder = { id: uid('p'), speciesId, qty: n, arriveDay: state.day + 1 }
     state.purchases.push(order)
     pushLog(`Заказано ${n} × ${species.name} у поставщика за ${total}₽ — прибудет на склад завтра`, 'buy')
+    // Агрегированный прогноз ёмкости (п.5 плана): не блокирует, но предупреждает.
+    if (!orderForecast(state, speciesId, n).fits) {
+      ui.flash('Не хватит места во всех аквариумах — рыба приедет в пакеты на склад')
+    }
     bump()
   },
   onWholesaleSell(speciesId) {

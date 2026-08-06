@@ -10,7 +10,7 @@ import { HALL_HEIGHT, HALL_WIDTH, ROOM_SHELF_CELL_CAPACITY, roomShelvesTotalCell
 import { shopAttractiveness, tankAttractiveness } from '../sim/buyers'
 import { buyPrice, decorStock, equipmentStock, retailPrice, wholesalePrice } from '../sim/economy'
 import { canEatFood, foodPortions, foodStockEntries, freshnessLeft } from '../sim/food'
-import { canStock, fishRetailStock, maxFitOnShelf, usedVolume, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
+import { canStock, fishRetailStock, maxFitOnShelf, orderForecast, usedVolume, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
 import { fishWellbeing } from '../sim/wellbeing'
 import { VERSION } from '../version'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
@@ -1931,6 +1931,36 @@ export function buildApp(actions: UIActions) {
     orderBtn.title = 'Прибудет на склад в пакетах на следующий день'
     orderBtn.addEventListener('click', () => actions.onOrderFromSupplier(species.id, purchaseQty))
 
+    // Прогноз вместимости (п.5 плана): шкала занятых литров всех аквариумов
+    // с учётом уже в пути + выбранного количества. Не блокирует — только информирует.
+    const fxBox = el('div', 'aq-capacity fx-box')
+    const fxTop = el('div', 'aq-capacity-top')
+    const fxLabel = el('span', 'aq-capacity-label', '')
+    const fxFree = el('span', 'aq-capacity-free', '')
+    fxTop.append(fxLabel, fxFree)
+    const fxTrack = el('div', 'capacity-track')
+    const fxFill = el('div', 'capacity-fill')
+    fxTrack.append(fxFill)
+    const fxNote = el('div', 'cap-note')
+    fxBox.append(fxTop, fxTrack, fxNote)
+
+    const syncCapacity = (n: number): void => {
+      const fc = orderForecast(state, species.id, n)
+      const occ = fc.totalL ? fc.usedL + fc.pendingL + fc.needL : 0
+      const pct = fc.totalL > 0 ? Math.min(100, (occ / fc.totalL) * 100) : 0
+      fxFill.style.width = `${pct}%`
+      fxFill.classList.remove('ok', 'high', 'full')
+      fxFill.classList.add(pct >= 100 ? 'full' : pct >= 80 ? 'high' : 'ok')
+      fxLabel.textContent = fc.totalL === 0 ? 'Аквариумов нет'
+        : `${Math.round(occ)} / ${fc.totalL} л занято`
+      fxFree.textContent = fc.totalL === 0 ? 'места нет'
+        : `${Math.round(Math.abs(fc.freeL))} л ${fc.freeL >= 0 ? 'свободно' : 'не хватает'} всего`
+      fxNote.textContent = fc.totalL === 0
+        ? 'Разместите аквариум — рыба приедет в пакеты на склад.'
+        : (fc.fits ? `Хватает места с учётом заказов в пути (на рыбу нужно ${Math.round(fc.needL)} л).` : `Не хватит ${Math.round(fc.needMoreL)} л — часть рыбы будет ждать пересадки в пакетах на складе.`)
+      fxBox.classList.toggle('warn', fc.totalL === 0 || !fc.fits)
+    }
+
     const sync = (): void => {
       let n = Number(qtyInput.value) || 1
       n = Math.max(1, Math.min(n, maxAffordable))
@@ -1943,8 +1973,9 @@ export function buildApp(actions: UIActions) {
     }
     qtyInput.addEventListener('input', sync)
     slider.addEventListener('input', () => { qtyInput.value = slider.value; sync() })
+    syncCapacity(purchaseQty)
 
-    form.append(slider, totalEl)
+    form.append(slider, totalEl, fxBox)
     if (maxAffordable < 1) form.append(storeReason(`Не хватает денег даже на 1 шт: нужно ${unit}₽`))
     form.append(orderBtn)
     storeFishDetail.append(form)

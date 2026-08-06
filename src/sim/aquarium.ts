@@ -105,6 +105,39 @@ export function freeStockSpace(state: GameState, species: FishSpecies): number {
   return n
 }
 
+export interface OrderForecast {
+  totalL: number // суммарный объём всех аквариумов
+  usedL: number // занятый объём рыб во всех аквариумах (с фактором продажности)
+  pendingL: number // объём заказов в пути (вид × количество)
+  freeL: number // свободно до этого заказа
+  needL: number // объём этого заказа (вид × количество)
+  needMoreL: number // сколько не хватает, 0 если влезает
+  fits: boolean // поместится ли суммарно (учитывая текущих рыб + в пути)
+}
+
+// Агрегированный прогноз вместимости (п.5 плана): хватит ли суммарного литража
+// всех аквариумов на текущих рыб + поставки в пути + указанный заказ.
+// Не блокирует оформление — только информирует (рыба прибудет в пакеты на склад).
+export function orderForecast(
+  state: GameState,
+  speciesId: string,
+  qty: number,
+  speciesById: Record<string, FishSpecies> = SPECIES_BY_ID,
+): OrderForecast {
+  let totalL = 0
+  let usedL = 0
+  for (const aq of allAquariums(state)) {
+    totalL += aq.volume
+    usedL += usedVolume(aq, speciesById)
+  }
+  let pendingL = 0
+  for (const p of state.purchases) pendingL += (speciesById[p.speciesId]?.minVolume ?? 0) * p.qty
+  const needL = (speciesById[speciesId]?.minVolume ?? 0) * Math.max(0, qty)
+  const freeL = totalL - usedL - pendingL
+  const needMoreL = Math.max(0, needL - freeL)
+  return { totalL, usedL, pendingL, freeL, needL, needMoreL, fits: needL <= freeL }
+}
+
 // Розничный запас рыбы: только особи в «продажных» аквариумах (без декора).
 export function fishRetailStock(state: GameState, speciesId: string): number {
   let n = 0
