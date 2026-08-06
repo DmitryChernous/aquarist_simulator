@@ -2422,12 +2422,26 @@ function buildLayout(): HTMLElement {
 
   main.append(zalTab, aquariumTab, storeTab, ordersTab)
 
-  const footer = el('footer', 'log-panel')
-  const footHead = el('div', 'log-head')
-  footHead.append(el('h3', '', 'Журнал событий'), el('span', 'version-badge', `v${VERSION}`))
-  footer.append(footHead)
-  footer.append(el('ul', 'log-list'))
+  // Журнал событий вынесен во всплывающее окно, открываемое фикс. кнопкой в правом нижнем углу.
+  const logToggle = el('button', 'log-toggle', '📜 Журнал')
+  logToggle.type = 'button'
+  const logModal = el('div', 'log-modal')
+  const logHead = el('div', 'modal-head log-head')
+  logHead.append(el('strong', '', 'Журнал событий'), el('span', 'version-badge', `v${VERSION}`), el('span', 'log-head-close', '✕'))
+  const logModalBody = el('div', 'modal-body')
+  logModalBody.append(el('ul', 'log-list'))
+  logModal.append(logHead, logModalBody)
+  logModal.style.display = 'none'
+  const openLog = (open: boolean): void => {
+    logModal.style.display = open ? 'flex' : 'none'
+    logToggle.classList.toggle('active', open)
+  }
+  logToggle.addEventListener('click', () => openLog(logModal.style.display === 'none'))
+  logHead.querySelector('.log-head-close')!.addEventListener('click', () => openLog(false))
+  logModal.addEventListener('click', (e) => {
+    if (e.target === logModal) openLog(false)
+  })
 
-  game.append(header, nav, main, footer, el('div', 'hud-flash'))
+  game.append(header, nav, main, logToggle, logModal, el('div', 'hud-flash'))
   return game
 }

@@ -113,7 +113,11 @@ export function generateOrder(state: GameState): Order | null {
   for (const t of allStorage2(state)) for (const item of t.stock) if (item.count > 0) inStock.add(item.speciesId)
   const onDisplay = new Set<string>()
   for (const a of aquariumsInRoom(state, 'hall')) if (!isSellable(a)) for (const f of a.fish) onDisplay.add(f.speciesId)
-  if (inStock.size === 0 && onDisplay.size === 0) return null
+  // Розничная продажа идёт из «продажных» (голых) аквариумов; их рыбу покупатели тоже могут заказать.
+  const forSale = new Set<string>()
+  for (const a of allAquariums(state)) if (isSellable(a)) for (const f of a.fish) forSale.add(f.speciesId)
+  const available = new Set<string>([...inStock, ...onDisplay, ...forSale])
+  if (available.size === 0) return null
 
   // Два архетипа:
   // - «на месте»: выбирает из того, что выставлено в зале (kind 'display', малая наценка);
