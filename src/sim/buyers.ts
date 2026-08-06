@@ -1,5 +1,4 @@
 import type { AquariumState, DecorKind, EquipmentId, GameState, Order, TankState } from '../types'
-import { MAX_DESIGN_LEVEL } from '../data/aquarium'
 import { FISH_SPECIES, SPECIES_BY_ID } from '../data/fish'
 import { EQUIPMENT } from '../data/shop'
 import { DECOR } from '../data/decor'
@@ -8,7 +7,6 @@ import { decorStock, equipmentStock } from './economy'
 import { allAquariums, aquariumsInRoom, isSellable } from './aquarium'
 
 export function tankAttractiveness(aq: AquariumState): number {
-  const design = (aq.designLevel / MAX_DESIGN_LEVEL) * 25
   const fish = aq.fish
   const healthAvg = fish.length ? fish.reduce((acc, f) => acc + f.health, 0) / fish.length : 0
   const healthPart = (healthAvg / 100) * 25
@@ -27,7 +25,7 @@ export function tankAttractiveness(aq: AquariumState): number {
     15,
   )
 
-  return Math.max(0, Math.min(100, Math.round(design + healthPart + diversity + appealPart + decorPart + eqBonus)))
+  return Math.max(0, Math.min(100, Math.round(healthPart + diversity + appealPart + decorPart + eqBonus)))
 }
 
 export function shopAttractiveness(state: GameState): number {

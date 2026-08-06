@@ -58,7 +58,6 @@ export function defaultState(): GameState {
     decor: [],
     fish: [],
     equipment: [],
-    designLevel: 0,
   }
   return {
     money: START_MONEY,
@@ -171,7 +170,6 @@ function migrateDisplayTanks(tanks: any[]): AquariumState[] {
     decor: [],
     fish: migrateFish(t.fish),
     equipment: eqInstances((Array.isArray(t.components) ? t.components : []).map((c: string) => LEGACY_EQ[c]).filter(Boolean)),
-    designLevel: Number(t.designLevel ?? 0),
   }))
 }
 

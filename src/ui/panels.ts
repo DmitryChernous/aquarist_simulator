@@ -1,5 +1,5 @@
 import { FISH_SPECIES, SPECIES_BY_ID } from '../data/fish'
-import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from '../data/aquarium'
+import { AQUARIUM_MODELS } from '../data/aquarium'
 import type { AquariumModel } from '../data/aquarium'
 import { EQUIPMENT, EQUIPMENT_IDS, SHELVES, STORAGE_MAX_SLOTS, STORAGE_RACK_CAPACITY, STORAGE_TANK_PRICE, shelfLoadLeft, shelfUsedLiters, storageCapacity, storageUsed } from '../data/shop'
 import { DECOR, DECOR_KINDS } from '../data/decor'
@@ -36,7 +36,6 @@ export interface UIActions {
   onRemoveAquarium(shelfId: string, aqId: string): void
   onSelectAquarium(aqId: string): void
   onRenameAquarium(aqId: string, name: string): void
-  onUpgradeDesign(aqId: string): void
   onWaterChange(aqId: string, key: 'temperature' | 'ph' | 'gh', value: number): void
   onSellEquipment(id: EquipmentId, aqId: string): void
   onMaintain(aqId: string, kind: 'water' | 'bacteria' | 'clean' | 'temp' | 'light', value?: number): void
@@ -216,6 +215,7 @@ export function buildApp(actions: UIActions) {
   const aqActions = app.querySelector<HTMLDivElement>('.aq-actions')!
 
   const storeGrid = app.querySelector<HTMLDivElement>('.store-fish-list')!
+  const fishStore = app.querySelector<HTMLDivElement>('.store-fish-layout')!
   const storeFishDetail = app.querySelector<HTMLDivElement>('.store-fish-detail')!
   const decorStore = app.querySelector<HTMLDivElement>('.decor-store')!
   const equipStore = app.querySelector<HTMLDivElement>('.equip-store')!
@@ -251,6 +251,7 @@ export function buildApp(actions: UIActions) {
   let selectedFishId: string | null = null
   let purchaseQty = 1
   let storeSearch = ''
+  let searchInput: HTMLInputElement | null = null
   let fishFamilyFilter = 'all'
   let fishRegionFilter = 'all'
   let fishGroup: 'none' | 'family' | 'region' = 'none'
@@ -283,11 +284,13 @@ export function buildApp(actions: UIActions) {
     activeStoreMode = 'sale'
     activeStoreSection = v
     for (const b of storeTabs) b.classList.toggle('active', b.dataset.store === v)
-    storeGrid.style.display = v === 'fish' ? '' : 'none'
+    fishStore.style.display = v === 'fish' ? '' : 'none'
     decorStore.style.display = v === 'decor' ? '' : 'none'
     equipStore.style.display = v === 'equip' ? '' : 'none'
     foodStore.style.display = v === 'food' ? '' : 'none'
-    renderStoreControls()
+    storeSearch = ''
+    if (searchInput) searchInput.value = ''
+    renderStoreContents(latestState)
   }
   for (const b of storeTabs) b.addEventListener('click', () => setStoreSection((b.dataset.store as 'fish' | 'decor' | 'equip' | 'food') ?? 'fish'))
   setStoreSection('fish')
@@ -300,7 +303,9 @@ export function buildApp(actions: UIActions) {
     furnEquip.style.display = v === 'equip' ? '' : 'none'
     furnFurn.style.display = v === 'furn' ? '' : 'none'
     furnAq.style.display = v === 'aquariums' ? '' : 'none'
-    renderStoreControls()
+    storeSearch = ''
+    if (searchInput) searchInput.value = ''
+    renderStoreContents(latestState)
   }
   for (const b of furnTabs) b.addEventListener('click', () => setFurnSection((b.dataset.store as 'shelves' | 'equip' | 'furn' | 'aquariums') ?? 'shelves'))
   setFurnSection('shelves')
@@ -310,7 +315,9 @@ export function buildApp(actions: UIActions) {
     for (const b of modeButtons) b.classList.toggle('active', b.dataset.mode === mode)
     saleGroup.style.display = mode === 'sale' ? '' : 'none'
     furnGroup.style.display = mode === 'furn' ? '' : 'none'
-    renderStoreControls()
+    storeSearch = ''
+    if (searchInput) searchInput.value = ''
+    renderStoreContents(latestState)
   }
   for (const b of modeButtons) b.addEventListener('click', () => setStoreMode((b.dataset.mode as 'sale' | 'furn') ?? 'sale'))
   setStoreMode('sale')
@@ -445,12 +452,12 @@ export function buildApp(actions: UIActions) {
 
   function fpAq(state: GameState): string {
     const all = allAquariums(state)
-    let s = all.map((a) => `${a.id}:${a.fish.length}:${a.equipment.length}:${a.decor.length}:${a.designLevel}:${a.decor.length === 0 ? 1 : 0}:${shelfOfAquarium(state, a)?.id ?? ''}`).join(',')
+    let s = all.map((a) => `${a.id}:${a.fish.length}:${a.equipment.length}:${a.decor.length}:${a.decor.length === 0 ? 1 : 0}:${shelfOfAquarium(state, a)?.id ?? ''}`).join(',')
     const aq = all.find((a) => a.id === state.selectedAquariumId)
     if (aq) {
       const w = aq.water
       const minHealth = aq.fish.length ? Math.round(Math.min(...aq.fish.map((f) => f.health)) * 100) : 0
-      s += `|sel:${aq.id}|w:${w.temperature.toFixed(1)}:${w.ph.toFixed(1)}:${w.gh.toFixed(1)}:${Math.round(w.o2)}:${Math.round(w.light)}|att:${Math.round(tankAttractiveness(aq))}|h:${minHealth}|$:${state.money >= designUpgradeCost(aq.designLevel) ? 1 : 0}`
+      s += `|sel:${aq.id}|w:${w.temperature.toFixed(1)}:${w.ph.toFixed(1)}:${w.gh.toFixed(1)}:${Math.round(w.o2)}:${Math.round(w.light)}|att:${Math.round(tankAttractiveness(aq))}|h:${minHealth}`
     }
     return s
   }
@@ -1043,19 +1050,6 @@ export function buildApp(actions: UIActions) {
       el('div', 'aq-line', `Растительность: ${Math.round(vegetationOf(aq) * 100)}%`),
       ...decorBody,
     ]))
-
-    // Карточка «Дизайн».
-    aqInfo.append(aqCard('design', '🎨', 'Дизайн', [
-      el('span', 'aq-sum-val', `уровень ${aq.designLevel}/${MAX_DESIGN_LEVEL} · улучшить ${designUpgradeCost(aq.designLevel)}₽`),
-    ], (() => {
-      const dRow = el('div', 'design-row')
-      const dBtn = el('button', 'btn small', `Уровень ${aq.designLevel}/${MAX_DESIGN_LEVEL} — улучшить`)
-      dBtn.disabled = aq.designLevel >= MAX_DESIGN_LEVEL || state.money < designUpgradeCost(aq.designLevel)
-      dBtn.addEventListener('click', () => actions.onUpgradeDesign(aq.id))
-      dRow.append(dBtn)
-      dRow.append(el('span', 'aq-line', ` (${designUpgradeCost(aq.designLevel)}₽)`))
-      return [dRow] as Array<HTMLElement>
-    })()))
 
     aqActions.innerHTML = ''
     const mkBtn = (label: string, fn: () => void) => {
@@ -1710,13 +1704,18 @@ export function buildApp(actions: UIActions) {
   function renderStoreControls(): void {
     storeControls.innerHTML = ''
     if (!latestState) return
-    const top = el('div', 'store-controls-top')
-    const search = el('input', 'store-search') as HTMLInputElement
-    search.type = 'search'
-    search.placeholder = 'Поиск…'
-    search.value = storeSearch
-    search.addEventListener('input', () => { storeSearch = search.value; renderStore(latestState) })
-    top.append(search)
+const top = el('div', 'store-controls-top')
+    if (!searchInput) {
+      searchInput = el('input', 'store-search') as HTMLInputElement
+      searchInput.type = 'search'
+      searchInput.placeholder = 'Поиск…'
+      searchInput.addEventListener('input', () => {
+        if (!searchInput) return
+        storeSearch = searchInput.value
+        renderStoreContents(latestState)
+      })
+    }
+    top.append(searchInput)
 
     const chipsRow = el('div', 'filter-chips')
 
@@ -1794,6 +1793,10 @@ export function buildApp(actions: UIActions) {
 
   function renderStore(state: GameState): void {
     renderStoreControls()
+    renderStoreContents(state)
+  }
+
+  function renderStoreContents(state: GameState): void {
     storeGrid.innerHTML = ''
     storeFishDetail.innerHTML = ''
     equipStore.innerHTML = ''

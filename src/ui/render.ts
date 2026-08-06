@@ -121,16 +121,6 @@ export function renderAquarium(
 
   for (const d of aq.decor) drawDecor(ctx, d.kind, Math.max(16, d.x * (w - 32)) | 0, h - 16 - Math.max(0, d.y * (h - 40)) | 0)
 
-  for (let i = 0; i < aq.designLevel; i++) {
-    const x = 40 + i * 90
-    ctx.fillStyle = i % 2 === 0 ? '#5a6b78' : '#4d5c68'
-    ctx.beginPath()
-    ctx.moveTo(x - 34, h - 16)
-    ctx.quadraticCurveTo(x, h - 16 - 48, x + 34, h - 16)
-    ctx.closePath()
-    ctx.fill()
-  }
-
   for (const fish of aq.fish) {
     const species = speciesById[fish.speciesId]
     if (!species) continue

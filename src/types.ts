@@ -166,7 +166,6 @@ export interface AquariumState {
   decor: Decoration[]
   fish: FishInstance[]
   equipment: EquipmentInst[]
-  designLevel: number
 }
 
 // --- Помещения ---

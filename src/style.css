@@ -655,12 +655,6 @@ body {
   flex: none;
   font-size: 12px;
 }
-.aq-info .design-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
 
 .warn {
   color: var(--warn);
@@ -706,13 +700,6 @@ body {
 }
 .slider-row input[type='range'] {
   width: 100%;
-}
-
-.design-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 13px;
 }
 
 .btn {
@@ -1616,8 +1603,7 @@ body {
 }
 
 .rack-panel,
-.components-panel,
-.design-panel {
+.components-panel {
   display: flex;
   flex-direction: column;
   gap: 6px;

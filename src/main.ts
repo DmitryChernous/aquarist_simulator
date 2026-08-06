@@ -1,7 +1,7 @@
 import './style.css'
 import { VERSION } from './version'
 import { SPECIES_BY_ID } from './data/fish'
-import { MAX_DESIGN_LEVEL, AQUARIUM_MODELS, designUpgradeCost } from './data/aquarium'
+import { AQUARIUM_MODELS } from './data/aquarium'
 import { EQUIPMENT, SHELVES, STOCK_BAG_DAYS, STORAGE_MAX_SLOTS, STORAGE_RACK_CAPACITY, STORAGE_TANK_PRICE, storageCapacity, storageUsed } from './data/shop'
 import { DECOR } from './data/decor'
 import { FOOD } from './data/food'
@@ -50,7 +50,6 @@ function newAquarium(shelfId: string, slabId: string, modelId: string, x: number
     decor: [],
     fish: [],
     equipment: [],
-    designLevel: 0,
   }
 }
 
@@ -297,19 +296,6 @@ const ui = buildApp({
     if (!n || n === aq.name) return
     aq.name = n
     pushLog(`Аквариум переименован в «${n}»`, 'info')
-    bump()
-  },
-  onUpgradeDesign(aqId) {
-    const aq = aquariumById(aqId)
-    if (!aq || aq.designLevel >= MAX_DESIGN_LEVEL) return
-    const cost = designUpgradeCost(aq.designLevel)
-    if (state.money < cost) {
-      ui.flash('Не хватает денег на дизайн!')
-      return
-    }
-    state.money -= cost
-    aq.designLevel += 1
-    pushLog(`Дизайн «${aq.name}» повышен до ${aq.designLevel}`, 'info')
     bump()
   },
   onWaterChange(aqId, key, value) {

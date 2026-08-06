@@ -1,9 +1,3 @@
-export const MAX_DESIGN_LEVEL = 5
-
-export function designUpgradeCost(level: number): number {
-  return 100 + level * 150
-}
-
 export interface AquariumModel {
   id: string
   name: string
