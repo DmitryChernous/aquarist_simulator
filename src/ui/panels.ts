@@ -275,6 +275,9 @@ export function buildApp(actions: UIActions) {
   let editSelEnd = 0
   let editInput: HTMLInputElement | null = null
   let aqNameBox: HTMLElement | null = null
+  // Свёрнутые/развёрнутые карточки информации об аквариуме (п.3 плана).
+  // Ключи сразу развёрнуты по умолчанию; состояние хранится между перерисовками.
+  const aqCardOpen = new Set<string>(['water'])
 
   function setStoreSection(v: 'fish' | 'decor' | 'equip' | 'food'): void {
     activeStoreMode = 'sale'
@@ -899,43 +902,139 @@ export function buildApp(actions: UIActions) {
     }
     renderAqNameRow(aqNameBox, aq)
     while (aqInfo.lastChild && aqInfo.lastChild !== aqNameBox) aqInfo.removeChild(aqInfo.lastChild)
-    if (aqRoom && aqShelf) {
-      aqInfo.append(el('div', 'aq-line loc-line', `${aqRoom.icon} Помещение: ${aqRoom.name} · Стойка: «${aqShelf.name}»`))
-    }
-    aqInfo.append(el('div', 'aq-line', `Объём ${aq.volume} л (${aq.w}×${aq.d}×${aq.h} см)`))
+
+    // Верхняя сводка: расположение и статус продажи.
+    aqInfo.append(el('div', 'aq-line loc-line', aqRoom && aqShelf
+      ? `${aqRoom.icon} Помещение: ${aqRoom.name} · Стойка: «${aqShelf.name}»`
+      : 'Аквариум не на стойке'))
     aqInfo.append(el('div', aq.decor.length === 0 ? 'aq-line sale-line' : 'aq-line', aq.decor.length === 0 ? 'Продажный (без декора): рыбу из него можно продавать в розницу' : 'Видовой аквариум: рыбу из него не продают — уберите декор, чтобы сделать продажным'))
-    const w = aq.water
+
+    const chip = (text: string, ok?: boolean): HTMLSpanElement => {
+      const c = el('span', 'chip chip-' + (ok ? 'ok' : 'warn'), text)
+      return c
+    }
+
+    // Сверяем параметры воды с диапазонами присутствующих видов.
+    const fishGroups = new Map<string, { count: number; minHealth: number }>()
+    for (const f of aq.fish) {
+      const g = fishGroups.get(f.speciesId) ?? { count: 0, minHealth: 100 }
+      g.count++
+      g.minHealth = Math.min(g.minHealth, f.health)
+      fishGroups.set(f.speciesId, g)
+    }
+    const presentSpecies = aq.fish.map((f) => SPECIES_BY_ID[f.speciesId]).filter((s): s is FishSpecies => !!s)
+    const outOfRange = (get: (s: FishSpecies) => [number, number], v: number): boolean =>
+      presentSpecies.some((s) => { const [mn, mx] = get(s); return v < mn || v > mx })
+    const water = aq.water
+    const waterOff: string[] = []
+    if (outOfRange((s) => [s.tempMin, s.tempMax], water.temperature)) waterOff.push('температура')
+    if (outOfRange((s) => [s.phMin, s.phMax], water.ph)) waterOff.push('pH')
+    if (outOfRange((s) => [s.ghMin, s.ghMax], water.gh)) waterOff.push('GH')
+    if (outOfRange((s) => [s.o2Min, s.o2Max], water.o2)) waterOff.push('O₂')
     const hasThermo = aq.equipment.some((e) => e.id === 'thermometer')
-    const tempLine = hasThermo
-      ? `Температура: ${w.temperature.toFixed(1)} °C`
-      : 'Температура: ? (нужен термометр)'
-    aqInfo.append(
-      el('div', 'list-title', 'Вода'),
-      el('div', 'aq-line', tempLine),
+
+    // Карточка: заголовок-сворачиватель + свёрнутая сводка + развёрнутое тело.
+    const aqCard = (id: string, icon: string, title: string, summary: Array<HTMLElement | string>, body: Array<HTMLElement | string>): HTMLDivElement => {
+      const open = aqCardOpen.has(id)
+      const card = el('div', 'aq-card' + (open ? ' open' : ''))
+      const head = el('button', 'aq-card-head')
+      head.setAttribute('type', 'button')
+      const sumBox = el('span', 'aq-card-sum')
+      sumBox.append(...summary)
+      head.append(el('span', 'aq-chev', open ? '▾' : '▸'), el('span', 'aq-card-ico', icon), el('span', 'aq-card-title', title), sumBox)
+      head.addEventListener('click', () => {
+        if (aqCardOpen.has(id)) aqCardOpen.delete(id)
+        else aqCardOpen.add(id)
+        renderAquarium(latestState)
+      })
+      card.append(head)
+      if (open) {
+        const bodyEl = el('div', 'aq-card-body')
+        bodyEl.append(...body)
+        card.append(bodyEl)
+      }
+      return card
+    }
+
+    // Карточка «Вода».
+    aqInfo.append(aqCard('water', '💧', 'Вода', [
+      el('span', 'aq-sum-val', `T ${hasThermo ? water.temperature.toFixed(1) + ' °C' : '?'} · pH ${water.ph.toFixed(1)} · GH ${water.gh.toFixed(1)} · O₂ ${Math.round(water.o2)}%`),
+      presentSpecies.length
+        ? (waterOff.length ? el('span', 'chip chip-warn', `вне нормы: ${waterOff.join(', ')}`) : el('span', 'chip chip-ok', 'в норме'))
+        : el('span', 'chip', 'рыб нет'),
+    ], [
+      el('div', 'aq-line' + (waterOff.includes('температура') ? ' off' : ''), hasThermo ? `Температура: ${water.temperature.toFixed(1)} °C` : 'Температура: ? (установите термометр)'),
       el('div', 'aq-line', `Комнатная: ${ROOM_TEMP} °C`),
-      el('div', 'aq-line', `pH: ${w.ph.toFixed(1)} · GH: ${w.gh.toFixed(1)} °dH`),
-      el('div', 'aq-line', `O₂: ${Math.round(w.o2)}% · Свет: ${Math.round(w.light)}%`),
-    )
-    aqInfo.append(
-      el('div', 'list-title', 'Обитатели'),
-      el('div', 'aq-line', `Рыб и животных: ${aq.fish.length}`),
-    )
-    aqInfo.append(
-      el('div', 'list-title', 'Оборудование'),
-      el('div', 'aq-line', aq.equipment.length ? aq.equipment.map((e) => EQUIPMENT[e.id].name).join(', ') : 'нет'),
-    )
-    aqInfo.append(
-      el('div', 'list-title', 'Декор'),
-      el('div', 'aq-line', `Растительность: ${Math.round(vegetationOf(aq) * 100)}% · объект(а/в): ${aq.decor.length}`),
-    )
-    aqInfo.append(el('div', 'list-title', 'Дизайн'))
-    const dRow = el('div', 'design-row')
-    const dBtn = el('button', 'btn small', `Уровень ${aq.designLevel}/${MAX_DESIGN_LEVEL} — улучшить`)
-    dBtn.disabled = aq.designLevel >= MAX_DESIGN_LEVEL || state.money < designUpgradeCost(aq.designLevel)
-    dBtn.addEventListener('click', () => actions.onUpgradeDesign(aq.id))
-    dRow.append(dBtn)
-    dRow.append(el('span', 'aq-line', ` (${designUpgradeCost(aq.designLevel)}₽)`))
-    aqInfo.append(dRow)
+      el('div', 'aq-line' + (waterOff.includes('pH') || waterOff.includes('GH') ? ' off' : ''), `pH: ${water.ph.toFixed(1)} · GH: ${water.gh.toFixed(1)} °dH`),
+      el('div', 'aq-line' + (waterOff.includes('O₂') ? ' off' : ''), `O₂: ${Math.round(water.o2)}% · Свет: ${Math.round(water.light)}%`),
+      presentSpecies.length ? el('div', 'aq-line eq-row-muted', 'Off-метка = параметр вне диапазона обитающих в аквариуме видов.') : el('div', 'aq-line eq-row-muted', 'Ориентиров для параметров нет — разместите рыбу.'),
+    ]))
+
+    // Карточка «Обитатели».
+    const fishBody: Array<HTMLElement> = []
+    for (const [sid, g] of fishGroups) {
+      const sp = SPECIES_BY_ID[sid]
+      if (!sp) continue
+      const row = el('div', 'fish-group-row')
+      const dot = el('span', 'fish-dot', '●')
+      dot.style.color = sp.color
+      const name = el('span', 'name', `${sp.name} ×${g.count}`)
+      const hp = el('span', 'health-pct')
+      hp.style.color = g.minHealth > 60 ? 'var(--ok)' : g.minHealth > 30 ? 'var(--warn)' : 'var(--dead)'
+      hp.textContent = `здоровье ${Math.round(g.minHealth)}% `
+      row.append(dot, name, hp)
+      fishBody.push(row)
+    }
+    const fishSum: Array<HTMLElement | string> = [el('span', 'aq-sum-val', aq.fish.length ? `${aq.fish.length} ос. · ${fishGroups.size} вид.` : 'нет рыбы')]
+    if (aq.fish.length) fishSum.push(chip(`${Math.round(Math.min(...aq.fish.map((f) => f.health)))}%`, Math.min(...aq.fish.map((f) => f.health)) > 60))
+    aqInfo.append(aqCard('fish', '🐟', 'Обитатели', fishSum, fishBody))
+
+    // Карточка «Оборудование».
+    const eqCounts = new Map<EquipmentId, number>()
+    for (const e of aq.equipment) eqCounts.set(e.id, (eqCounts.get(e.id) ?? 0) + 1)
+    const eqBody: Array<HTMLElement> = []
+    for (const [eid, count] of eqCounts) {
+      const def = EQUIPMENT[eid]
+      const row = el('div', 'equip-row')
+      row.append(el('span', 'aq-card-ico', '🔧'), el('span', 'name', `${def.name}${count > 1 ? ` ×${count}` : ''}`))
+      eqBody.push(row)
+    }
+    if (!eqBody.length) eqBody.push(el('div', 'aq-line eq-row-muted', 'Оборудования нет'))
+    aqInfo.append(aqCard('equip', '🔧', 'Оборудование', [
+      aq.equipment.length ? aq.equipment.map((e) => EQUIPMENT[e.id].name).join(', ') : 'нет',
+    ], eqBody))
+
+    // Карточка «Декор».
+    const decorCounts = new Map<string, number>()
+    for (const d of aq.decor) decorCounts.set(d.kind, (decorCounts.get(d.kind) ?? 0) + 1)
+    const decorBody: Array<HTMLElement> = []
+    for (const kind of decorCounts.keys()) {
+      const def = DECOR[kind as DecorKind]
+      const count = decorCounts.get(kind as DecorKind) ?? 0
+      const row = el('div', 'decor-row')
+      row.append(el('span', 'equip-ico', '🪨'), el('span', 'name', `${def ? def.name : kind}${count > 1 ? ` ×${count}` : ''}`))
+      decorBody.push(row)
+    }
+    if (!decorBody.length) decorBody.push(el('div', 'aq-line eq-row-muted', 'Декора нет'))
+    aqInfo.append(aqCard('decor', '🪴', 'Декор', [
+      el('span', 'aq-sum-val', `растительность ${Math.round(vegetationOf(aq) * 100)}% · объектов ${aq.decor.length}`),
+    ], [
+      el('div', 'aq-line', `Растительность: ${Math.round(vegetationOf(aq) * 100)}%`),
+      ...decorBody,
+    ]))
+
+    // Карточка «Дизайн».
+    aqInfo.append(aqCard('design', '🎨', 'Дизайн', [
+      el('span', 'aq-sum-val', `уровень ${aq.designLevel}/${MAX_DESIGN_LEVEL} · улучшить ${designUpgradeCost(aq.designLevel)}₽`),
+    ], (() => {
+      const dRow = el('div', 'design-row')
+      const dBtn = el('button', 'btn small', `Уровень ${aq.designLevel}/${MAX_DESIGN_LEVEL} — улучшить`)
+      dBtn.disabled = aq.designLevel >= MAX_DESIGN_LEVEL || state.money < designUpgradeCost(aq.designLevel)
+      dBtn.addEventListener('click', () => actions.onUpgradeDesign(aq.id))
+      dRow.append(dBtn)
+      dRow.append(el('span', 'aq-line', ` (${designUpgradeCost(aq.designLevel)}₽)`))
+      return [dRow] as Array<HTMLElement>
+    })()))
 
     aqActions.innerHTML = ''
     const mkBtn = (label: string, fn: () => void) => {

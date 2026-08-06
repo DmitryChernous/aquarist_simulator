@@ -489,6 +489,118 @@ body {
   color: var(--ok);
   font-weight: 600;
 }
+.aq-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.aq-card.open {
+  border-color: rgba(63, 163, 255, 0.6);
+}
+.aq-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  color: #e8f1f5;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.aq-card-head:hover {
+  background: rgba(63, 163, 255, 0.08);
+}
+.aq-chev {
+  flex: none;
+  width: 12px;
+  color: #9fb0c4;
+  font-size: 11px;
+}
+.aq-card-ico {
+  flex: none;
+}
+.aq-card-title {
+  flex: none;
+  font-weight: 700;
+}
+.aq-card-sum {
+  flex: 1;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: #9fb0c4;
+  text-align: right;
+}
+.aq-card-sum .aq-sum-val {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aq-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+.chip {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  line-height: 1.6;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: #9fb0c4;
+}
+.chip-ok {
+  color: var(--ok);
+  border-color: rgba(61, 220, 132, 0.5);
+}
+.chip-warn {
+  color: var(--warn);
+  border-color: rgba(245, 185, 66, 0.5);
+}
+.chip-bad {
+  color: var(--dead);
+  border-color: rgba(255, 95, 109, 0.5);
+}
+.aq-line.off {
+  color: #ff9b8f;
+  font-weight: 600;
+}
+.aq-line.eq-row-muted {
+  color: #9fb0c4;
+}
+.fish-group-row,
+.equip-row,
+.decor-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.fish-group-row .name,
+.equip-row .name,
+.decor-row .name {
+  flex: 1;
+}
+.fish-dot {
+  flex: none;
+  font-size: 10px;
+}
+.health-pct {
+  flex: none;
+  font-size: 12px;
+}
 .aq-info .design-row {
   display: flex;
   align-items: center;
