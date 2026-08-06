@@ -8,7 +8,7 @@ import { FOOD } from './data/food'
 import { FURNITURE } from './data/furniture'
 import { ROOM_BY_ID } from './data/rooms'
 import { DAY_DURATION_SECONDS } from './timing'
-import { allAquariums, canStock, fishRetailStock, fitAquariums, freeStockSpace, isSellable, recalcWater, takeSellableFish, tickWater, usedVolume } from './sim/aquarium'
+import { allAquariums, canStock, fishRetailStock, fitAquariums, isSellable, recalcWater, takeSellableFish, tickWater, usedVolume } from './sim/aquarium'
 import { updateHealth, feedFish } from './sim/health'
 import { canEatFood, liveShelfDays } from './sim/food'
 import { buyPrice, dailyUpkeep, wholesalePrice } from './sim/economy'
@@ -574,21 +574,19 @@ onInstallEquipment(id, aqId) {
     }
     bump()
   },
-  onOrderFromSupplier(speciesId) {
+  onOrderFromSupplier(speciesId, count = 1) {
+    const n = Math.max(1, Math.floor(count) || 1)
     const species = SPECIES_BY_ID[speciesId]
     const price = buyPrice(species, state.market[speciesId] ?? 1)
-    if (state.money < price) {
+    const total = price * n
+    if (state.money < total) {
       ui.flash('Не хватает денег!')
       return
     }
-    if (freeStockSpace(state, species) < 1) {
-      ui.flash('Нет места в аквариумах, чтобы принять рыбу! Освободите ёмкость или продайте рыб.')
-      return
-    }
-    state.money -= price
-    const order: PurchaseOrder = { id: uid('p'), speciesId, qty: 1, arriveDay: state.day + 1 }
+    state.money -= total
+    const order: PurchaseOrder = { id: uid('p'), speciesId, qty: n, arriveDay: state.day + 1 }
     state.purchases.push(order)
-    pushLog(`Заказана ${species.name} у поставщика за ${price}₽ — прибудет на склад завтра`, 'buy')
+    pushLog(`Заказано ${n} × ${species.name} у поставщика за ${total}₽ — прибудет на склад завтра`, 'buy')
     bump()
   },
   onWholesaleSell(speciesId) {

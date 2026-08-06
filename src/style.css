@@ -705,6 +705,87 @@ body {
   flex-wrap: wrap;
 }
 
+.store-fish-layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.store-fish-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 62vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--panel-2);
+}
+.store-fish-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #cfe0ec;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.store-fish-item:hover {
+  background: rgba(63, 139, 255, 0.08);
+}
+.store-fish-item.active {
+  background: rgba(63, 139, 255, 0.18);
+  border-color: var(--accent);
+}
+.store-fish-item .badge.in-transit {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.store-fish-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--panel);
+}
+.order-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+.order-qty-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.qty-label {
+  font-size: 13px;
+  color: #cfe0ec;
+  font-weight: 600;
+}
+.order-slider {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.order-total {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.order-form .btn.buy {
+  align-self: flex-start;
+}
+
 .store-mode {
   display: flex;
   gap: 6px;

@@ -1,2 +1,2 @@
 // Версия сборки. Обновлять при каждом релизе синхронно с package.json.
-export const VERSION = '0.31.2'
+export const VERSION = '0.32.0'

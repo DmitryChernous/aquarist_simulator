@@ -54,7 +54,7 @@ export interface UIActions {
   onMoveToStorage(aqId: string, fishId: string): void
   onFeed(aqId: string, fishId: string | null, foodId: FoodId): void
   onBuyFood(id: FoodId): void
-  onOrderFromSupplier(speciesId: string): void
+  onOrderFromSupplier(speciesId: string, count: number): void
   onWholesaleSell(speciesId: string): void
   onFulfillOrder(orderId: string): void
   onTogglePause(): void
@@ -215,7 +215,8 @@ export function buildApp(actions: UIActions) {
   const aqInfo = app.querySelector<HTMLDivElement>('.aq-info')!
   const aqActions = app.querySelector<HTMLDivElement>('.aq-actions')!
 
-  const storeGrid = app.querySelector<HTMLDivElement>('.store-grid')!
+  const storeGrid = app.querySelector<HTMLDivElement>('.store-fish-list')!
+  const storeFishDetail = app.querySelector<HTMLDivElement>('.store-fish-detail')!
   const decorStore = app.querySelector<HTMLDivElement>('.decor-store')!
   const equipStore = app.querySelector<HTMLDivElement>('.equip-store')!
   const foodStore = app.querySelector<HTMLDivElement>('.food-store')!
@@ -247,6 +248,8 @@ export function buildApp(actions: UIActions) {
 
   let activeStoreMode: 'sale' | 'furn' = 'sale'
   let activeStoreSection = 'fish'
+  let selectedFishId: string | null = null
+  let purchaseQty = 1
   let storeSearch = ''
   let fishFamilyFilter = 'all'
   let fishRegionFilter = 'all'
@@ -1672,6 +1675,7 @@ export function buildApp(actions: UIActions) {
   function renderStore(state: GameState): void {
     renderStoreControls()
     storeGrid.innerHTML = ''
+    storeFishDetail.innerHTML = ''
     equipStore.innerHTML = ''
     decorStore.innerHTML = ''
     foodStore.innerHTML = ''
@@ -1700,49 +1704,130 @@ export function buildApp(actions: UIActions) {
 
     const byGroup = fishGroup === 'family' ? 'family' : fishGroup === 'region' ? 'region' : null
 
+    // Левый столбец: список рыб (только наименования).
+    storeGrid.innerHTML = ''
     let lastKey: string | null = null
-    for (const { species, factor } of items) {
+    const orderTotal = (id: string): number =>
+      state.purchases.filter((p) => p.speciesId === id).reduce((a, p) => a + p.qty, 0)
+    if (items.length === 0) {
+      storeGrid.append(el('div', 'store-empty', 'Ничего не найдено'))
+    }
+    for (const { species } of items) {
       const key = byGroup ? species[byGroup] : null
       if (byGroup && key !== lastKey) {
         lastKey = key
         storeGrid.append(el('div', 'grid-group-head', byGroup === 'family' ? `${species.family} — семейство` : species.region))
       }
-      const card = el('div', 'store-card')
-      const head = el('div', 'store-head')
+      const row = el('button', selectedFishId === species.id ? 'store-fish-item active' : 'store-fish-item')
       const dot = el('span', 'dot')
       dot.style.background = species.color
-      head.append(dot, el('strong', 'store-name', species.name))
-      const badges = el('div', 'store-badges')
-      badges.append(el('span', 'badge', species.family), el('span', 'badge', species.region))
-      card.append(
-        head,
-        el('div', 'store-latin', species.latin),
-        badges,
-        demandBadge(factor),
-        el('div', 'store-params', [
-          `${species.sizeCm} см · мин. ${species.minVolume} л`,
-          `t ${species.tempMin}–${species.tempMax} °C · pH ${species.phMin}–${species.phMax} · GH ${species.ghMin}–${species.ghMax} °dH`,
-          `O₂ ${species.o2Min}–${species.o2Max}% · свет ${species.lightMin}–${species.lightMax}%`,
-        ].join(' · ')),
-      )
-      const priceRow = el('div', 'store-prices')
-      priceRow.append(
-        el('span', '', `Закупка ${buyPrice(species, factor)}₽`),
-        el('span', 'sell-hint', `Розница ${retailPrice(species, factor)}₽ · опт ${wholesalePrice(species, factor)}₽`),
-      )
-      card.append(priceRow)
-      const buyBtn = el('button', 'btn buy', `Заказать у поставщика — ${buyPrice(species, factor)}₽`)
-      const noMoney = state.money < buyPrice(species, factor)
-      buyBtn.disabled = noMoney
-      buyBtn.title = 'Оплата сейчас, рыба прибудет на склад в пакетах на следующий день'
-      buyBtn.addEventListener('click', () => actions.onOrderFromSupplier(species.id))
-      card.append(buyBtn)
-      if (noMoney) card.append(storeReason(`Не хватает денег: нужно ${buyPrice(species, factor)}₽`))
-      const inTransit = state.purchases.filter((p) => p.speciesId === species.id).reduce((a, p) => a + p.qty, 0)
-      if (inTransit > 0) card.append(el('div', 'feed-ok', `В пути: ${inTransit} · День ${Math.min(...state.purchases.filter((p) => p.speciesId === species.id).map((p) => p.arriveDay))}`))
-      storeGrid.append(card)
+      const nameEl = el('span', 'store-name', species.name)
+      row.append(dot, nameEl)
+      const inTransit = orderTotal(species.id)
+      if (inTransit > 0) row.append(el('span', 'badge in-transit', `✈ ${inTransit}`))
+      row.addEventListener('click', () => {
+        selectedFishId = species.id
+        purchaseQty = 1
+        renderStore(state)
+      })
+      storeGrid.append(row)
     }
-    if (items.length === 0) storeGrid.append(el('div', 'store-empty', 'Ничего не найдено'))
+
+    // Правый столбец: описание + форма заказа.
+    storeFishDetail.innerHTML = ''
+    const sel = items.find(({ species }) => species.id === selectedFishId)
+    if (!sel) {
+      storeFishDetail.append(el('div', 'store-empty', items.length ? 'Выберите рыбу из списка слева' : 'Ничего не найдено'))
+      return
+    }
+    const { species, factor } = sel
+    const unit = buyPrice(species, factor)
+    const maxAffordable = Math.max(0, Math.floor(state.money / unit))
+    if (purchaseQty > maxAffordable && maxAffordable >= 1) purchaseQty = maxAffordable
+    const total = unit * purchaseQty
+    const inTransit = orderTotal(species.id)
+    const firstArrive = inTransit > 0
+      ? Math.min(...state.purchases.filter((p) => p.speciesId === species.id).map((p) => p.arriveDay))
+      : null
+
+    const head = el('div', 'store-head')
+    const dot = el('span', 'dot')
+    dot.style.background = species.color
+    head.append(dot, el('strong', 'store-name', species.name))
+    const badges = el('div', 'store-badges')
+    badges.append(el('span', 'badge', species.family), el('span', 'badge', species.region), demandBadge(factor))
+    storeFishDetail.append(
+      head,
+      el('div', 'store-latin', species.latin),
+      badges,
+      el('div', 'store-params', [
+        `${species.sizeCm} см · мин. ${species.minVolume} л`,
+        `t ${species.tempMin}–${species.tempMax} °C · pH ${species.phMin}–${species.phMax} · GH ${species.ghMin}–${species.ghMax} °dH`,
+        `O₂ ${species.o2Min}–${species.o2Max}% · свет ${species.lightMin}–${species.lightMax}%`,
+      ].join(' · ')),
+    )
+    const prices = el('div', 'store-prices')
+    prices.append(
+      el('span', '', `Закупка: ${unit}₽ / шт`),
+      el('span', 'sell-hint', `Розница ${retailPrice(species, factor)}₽ · опт ${wholesalePrice(species, factor)}₽`),
+    )
+    storeFishDetail.append(prices)
+    if (inTransit > 0) storeFishDetail.append(el('div', 'feed-ok', `В пути: ${inTransit} · День ${firstArrive}`))
+
+    const form = el('div', 'order-form')
+    form.append(el('div', 'list-title', 'Заказ у поставщика'))
+    form.append(el('div', 'comp-hint', 'Оплата сейчас, рыба прибудет на склад в пакетах на следующий день.'))
+
+    const qtyRow = el('div', 'order-qty-row')
+    const qtyInput = el('input') as HTMLInputElement
+    if (maxAffordable >= 1) {
+      qtyInput.type = 'number'
+      qtyInput.min = '1'
+      qtyInput.max = String(maxAffordable)
+      qtyInput.value = String(purchaseQty)
+    } else {
+      qtyInput.type = 'number'
+      qtyInput.min = '1'
+      qtyInput.max = '1'
+      qtyInput.value = '1'
+      qtyInput.disabled = true
+    }
+    qtyInput.className = 'count-input'
+    qtyRow.append(el('span', 'qty-label', 'Количество'), qtyInput)
+    form.append(qtyRow)
+
+    const slider = el('input') as HTMLInputElement
+    slider.type = 'range'
+    slider.min = '1'
+    slider.max = String(Math.max(1, maxAffordable))
+    slider.step = '1'
+    slider.value = String(Math.max(1, Math.min(purchaseQty, Math.max(1, maxAffordable))))
+    slider.className = 'order-slider'
+    if (maxAffordable < 1) slider.disabled = true
+
+    const totalEl = el('div', 'order-total', `Итого: ${total}₽`)
+    const orderBtn = el('button', 'btn buy', `Заказать ${purchaseQty} шт — ${total}₽`)
+    orderBtn.disabled = purchaseQty < 1 || state.money < total
+    orderBtn.title = 'Прибудет на склад в пакетах на следующий день'
+    orderBtn.addEventListener('click', () => actions.onOrderFromSupplier(species.id, purchaseQty))
+
+    const sync = (): void => {
+      let n = Number(qtyInput.value) || 1
+      n = Math.max(1, Math.min(n, maxAffordable))
+      purchaseQty = n
+      slider.value = String(n)
+      qtyInput.value = String(n)
+      totalEl.textContent = `Итого: ${unit * n} ₽`
+      orderBtn.textContent = `Заказать ${n} шт — ${unit * n}₽`
+      orderBtn.disabled = state.money < unit * n
+    }
+    qtyInput.addEventListener('input', sync)
+    slider.addEventListener('input', () => { qtyInput.value = slider.value; sync() })
+
+    form.append(slider, totalEl)
+    if (maxAffordable < 1) form.append(storeReason(`Не хватает денег даже на 1 шт: нужно ${unit}₽`))
+    form.append(orderBtn)
+    storeFishDetail.append(form)
   }
 
   function renderStoreDecor(state: GameState): void {
@@ -2152,7 +2237,10 @@ function buildLayout(): HTMLElement {
     segBtn('equip', 'Оборудование'),
     segBtn('food', 'Корм'),
   )
-  const fishStore = el('div', 'store-grid')
+  const fishStore = el('div', 'store-fish-layout')
+  const storeFishList = el('div', 'store-fish-list')
+  const storeFishDetail = el('div', 'store-fish-detail')
+  fishStore.append(storeFishList, storeFishDetail)
   const decorStore = el('div', 'decor-store')
   const equipStore = el('div', 'equip-store')
   const foodStore = el('div', 'decor-store food-store')
