@@ -14,7 +14,7 @@ import { canStock, fishRetailStock, maxFitOnShelf, orderForecast, usedVolume, ve
 import { fishWellbeing } from '../sim/wellbeing'
 import { VERSION } from '../version'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
-import type { AquariumState, DecorDef, DecorKind, EquipmentId, FishDiet, FishSpecies, FoodId, FurnitureId, GameState, RoomId, ShelfState, ShopState } from '../types'
+import type { AquariumState, DecorDef, DecorKind, EquipmentId, FishDiet, FishInstance, FishSpecies, FoodId, FurnitureId, GameState, RoomId, ShelfState, ShopState } from '../types'
 import type { WellBeingReport } from '../sim/wellbeing'
 
 const DIET_LABEL: Record<FishDiet, string> = {
@@ -1148,10 +1148,104 @@ export function buildApp(actions: UIActions) {
   }
 
   function openInhabitantsModal(s: GameState, aqId: string): void {
-    const aq = allAquariums(s).find((a) => a.id === aqId)
-    if (!aq) return
-    const { body, close } = overlay(`Обитатели: «${aq.name}»`)
+    const found = allAquariums(s).find((a) => a.id === aqId)
+    if (!found) return
+    const aq: AquariumState = found
+    const { modal, body, close } = overlay(`Обитатели: «${aq.name}»`)
+    modal.classList.add('mod-wide')
 
+    const layout = el('div', 'occ-layout')
+    const listCol = el('div', 'occ-list')
+    const detailCol = el('div', 'occ-detail')
+
+    // Правая колонка: подробности конкретного обитателя (или сводка, если пусто/не выбран).
+    function renderFishDetail(fish: FishInstance | null): void {
+      detailCol.innerHTML = ''
+      if (!fish) {
+        if (aq.fish.length === 0) {
+          detailCol.append(el('div', 'list-title', 'Общее состояние'), el('div', 'empty', 'Нет обитателей — заселите рыбу со склада в левой колонке.'))
+          return
+        }
+        const distinct = new Set(aq.fish.map((f) => f.speciesId))
+        const avg = Math.round(aq.fish.reduce((acc, f) => acc + fishWellbeing(SPECIES_BY_ID[f.speciesId], f, aq).wellbeing, 0) / aq.fish.length)
+        detailCol.append(
+          el('div', 'list-title', 'Обитатели'),
+          el('div', 'well-total', `${aq.fish.length} ос. · ${distinct.size} вид.`),
+          el('div', 'aq-line', `Среднее самочувствие: ${avg}/100`),
+          el('div', 'aq-line-muted', 'Нажмите на обитателя слева, чтобы увидеть его состояние и потребности.'),
+        )
+        return
+      }
+      const species = SPECIES_BY_ID[fish.speciesId]
+      const rep = fishWellbeing(species, fish, aq)
+      detailCol.append(el('div', 'list-title', 'Самочувствие'), el('div', 'well-total', `${Math.round(rep.wellbeing)}/100`))
+      const tag = el('span', 'welfare-tag', welfareLabel(rep))
+      tag.classList.add('welfare', welfareClass(rep))
+      const line = el('div', 'well-line')
+      line.append(el('span', '', 'Общее состояние: '), tag)
+      detailCol.append(
+        line,
+        el('div', 'aq-line', `Рост/взросление: ${Math.round(fish.maturity * 100)}%`),
+        el('div', 'aq-line', `Готовность к нересту: ${Math.round(fish.spawnReady)}%`),
+        el('div', 'aq-line', rep.diseased ? 'Состояние: болеет' : 'Состояние: здоров'),
+      )
+      detailCol.appendChild(el('div', 'list-title', 'Потребности'))
+      const needs = el('div', 'need-grid')
+      for (const b of rep.bars) {
+        const rowEl = el('div', 'need-row')
+        const lbl = el('div', 'need-head')
+        lbl.append(el('span', 'need-label', b.label), el('span', 'need-val', b.note))
+        const barWrap = el('div', 'need-bar')
+        const fill = el('div', 'need-fill')
+        fill.style.width = `${b.score}%`
+        fill.classList.add(b.status)
+        barWrap.appendChild(fill)
+        rowEl.append(lbl, barWrap)
+        needs.appendChild(rowEl)
+      }
+      detailCol.appendChild(needs)
+      const acts = el('div', 'occ-actions')
+      const feed = el('button', 'btn', 'Покормить')
+      feed.addEventListener('click', () => openFeedModal(s, aq.id, fish.id))
+      const toStorage = el('button', 'btn danger', 'В склад')
+      toStorage.addEventListener('click', () => {
+        actions.onMoveToStorage(aq.id, fish.id)
+        renderList()
+        renderFishDetail(null)
+      })
+      acts.append(feed, toStorage)
+      detailCol.appendChild(acts)
+    }
+
+    // Левая колонка: список обитателей.
+    function renderList(): void {
+      listCol.innerHTML = ''
+      if (aq.fish.length === 0) {
+        listCol.append(el('div', 'empty', 'Аквариум пуст.'))
+        return
+      }
+      for (const fish of aq.fish) {
+        const species = SPECIES_BY_ID[fish.speciesId]
+        const item = el('button', 'occ-item')
+        item.type = 'button'
+        const fill = el('span', 'health-fill')
+        fill.style.width = `${fish.health}%`
+        fill.classList.add(fish.health > 60 ? 'ok' : fish.health > 30 ? 'warn' : 'dead')
+        const name = el('span', 'fish-name', `${species.name} `)
+        name.append(fill)
+        item.append(name, el('span', 'health-num', `${Math.round(fish.health)}%`))
+        item.addEventListener('click', () => {
+          for (const x of listCol.querySelectorAll<HTMLElement>('.occ-item')) x.classList.remove('active')
+          item.classList.add('active')
+          renderFishDetail(fish)
+        })
+        listCol.append(item)
+      }
+    }
+
+    // Секция «заселить со склада» — в левой колонке.
+    const stockSection = el('div', 'occ-stock')
+    const stockHead = el('div', 'list-title', 'Заселить со склада')
     const goStore = el('button', 'btn buy', 'Купить рыб в магазине →')
     goStore.addEventListener('click', () => {
       close()
@@ -1159,11 +1253,14 @@ export function buildApp(actions: UIActions) {
       setStoreMode('sale')
       setStoreSection('fish')
     })
-    body.append(goStore)
-    body.append(el('div', 'list-title', 'Заселить со склада'))
+    const feedAll = el('button', 'btn small', 'Кормить всех')
+    feedAll.disabled = aq.fish.length === 0
+    feedAll.addEventListener('click', () => openFeedModal(s, aq.id, null))
+    stockHead.append(feedAll)
+    stockSection.append(stockHead, goStore)
     const stockById = new Map<string, number>()
     for (const item of s.storage.stock) stockById.set(item.speciesId, (stockById.get(item.speciesId) ?? 0) + item.count)
-    if (stockById.size === 0) body.append(el('div', 'empty', 'Склад пуст — закупите обитателей во вкладке «Магазин».'))
+    if (stockById.size === 0) stockSection.append(el('div', 'empty', 'Склад пуст — закупите обитателей во вкладке «Магазин».'))
     for (const [speciesId, count] of stockById) {
       const species = SPECIES_BY_ID[speciesId]
       const room = canStock(aq, species, 1)
@@ -1181,39 +1278,17 @@ export function buildApp(actions: UIActions) {
       btn.addEventListener('click', () => {
         const n = Math.max(1, Math.min(count, room, Number(inp.value) || 1))
         actions.onStockToAquarium(speciesId, aq.id, n)
+        renderList()
       })
       row.append(dot, el('span', 'stock-name', `${species.name} (склад ${count} · до ${room})`), inp, btn)
-      body.append(row)
+      stockSection.append(row)
     }
 
-    body.append(el('div', 'list-title', 'В аквариуме'))
-    const fishWrap = el('div')
-    if (aq.fish.length === 0) fishWrap.append(el('div', 'empty', 'Аквариум пуст.'))
+    layout.append(stockSection, listCol, detailCol)
+    body.append(layout)
 
-    const feedAll = el('button', 'btn small', 'Кормить всех')
-    feedAll.disabled = aq.fish.length === 0
-    feedAll.addEventListener('click', () => openFeedModal(s, aq.id, null))
-    body.append(feedAll)
-
-    for (const fish of aq.fish) {
-      const species = SPECIES_BY_ID[fish.speciesId]
-      const rep = fishWellbeing(species, fish, aq)
-      const row = el('div', 'fish-row stock-row-btn')
-      const dot = el('span', 'dot')
-      dot.style.background = species.color
-      const fill = el('span', 'health-fill')
-      fill.style.width = `${fish.health}%`
-      fill.classList.add(fish.health > 60 ? 'ok' : fish.health > 30 ? 'warn' : 'dead')
-      const name = el('span', 'fish-name', `${species.name} `)
-      name.append(fill)
-      const badge = el('span', 'welfare-tag', welfareLabel(rep))
-      badge.classList.add('welfare', welfareClass(rep))
-      row.append(dot, name, el('span', 'health-num', `${Math.round(fish.health)}%`), badge)
-      row.appendChild(el('span', 'fish-caret', '›'))
-      row.addEventListener('click', () => openFishDetailModal(s, aq.id, fish.id))
-      fishWrap.append(row)
-    }
-    body.append(fishWrap)
+    renderList()
+    renderFishDetail(null)
   }
 
   function openFeedModal(s: GameState, aqId: string, fishId: string | null): void {
@@ -1262,50 +1337,6 @@ export function buildApp(actions: UIActions) {
       }
     }
     render()
-  }
-
-  function openFishDetailModal(s: GameState, aqId: string, fishId: string): void {
-    const aq = allAquariums(s).find((a) => a.id === aqId)
-    const fish = aq?.fish.find((f) => f.id === fishId)
-    const species = fish && SPECIES_BY_ID[fish.speciesId]
-    if (!aq || !fish || !species) return
-    const rep = fishWellbeing(species, fish, aq)
-    const { body } = overlay(`${species.name}`)
-    body.append(
-      el('div', 'list-title', 'Самочувствие'),
-      el('div', 'well-total', `${Math.round(rep.wellbeing)}/100`),
-    )
-    const tag = el('span', 'welfare-tag', welfareLabel(rep))
-    tag.classList.add('welfare', welfareClass(rep))
-    const line = el('div', 'well-line')
-    line.append(el('span', '', 'Общее состояние: '), tag)
-    body.append(
-      line,
-      el('div', 'aq-line', `Рост/взросление: ${Math.round(fish.maturity * 100)}%`),
-      el('div', 'aq-line', `Готовность к нересту: ${Math.round(fish.spawnReady)}%`),
-      el('div', 'aq-line', rep.diseased ? 'Состояние: болеет' : 'Состояние: здоров'),
-    )
-    body.appendChild(el('div', 'list-title', 'Потребности'))
-    const needs = el('div', 'need-grid')
-    for (const b of rep.bars) {
-      const rowEl = el('div', 'need-row')
-      const lbl = el('div', 'need-head')
-      lbl.append(el('span', 'need-label', b.label), el('span', 'need-val', b.note))
-      const barWrap = el('div', 'need-bar')
-      const fill = el('div', 'need-fill')
-      fill.style.width = `${b.score}%`
-      fill.classList.add(b.status)
-      barWrap.appendChild(fill)
-      rowEl.append(lbl, barWrap)
-      needs.appendChild(rowEl)
-    }
-    body.appendChild(needs)
-    const feed = el('button', 'btn', 'Покормить')
-    feed.addEventListener('click', () => openFeedModal(s, aq.id, fish.id))
-    body.appendChild(feed)
-    const toStorage = el('button', 'btn danger', 'В склад')
-    toStorage.addEventListener('click', () => actions.onMoveToStorage(aq.id, fish.id))
-    body.appendChild(toStorage)
   }
 
   function openMaintenanceModal(s: GameState, aqId: string): void {

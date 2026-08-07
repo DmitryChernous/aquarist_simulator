@@ -869,6 +869,83 @@ body {
   gap: 14px;
   align-items: start;
 }
+.mod-wide {
+  max-width: 780px;
+}
+.occ-layout {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  min-height: 0;
+}
+.occ-list,
+.occ-stock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--panel-2);
+  max-height: 58vh;
+  overflow-y: auto;
+  min-height: 0;
+}
+.occ-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #cfe0ec;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.occ-item:hover {
+  background: rgba(63, 139, 255, 0.08);
+}
+.occ-item.active {
+  background: rgba(63, 139, 255, 0.18);
+  border-color: var(--accent);
+}
+.occ-item .fish-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.occ-item .health-num {
+  flex-shrink: 0;
+}
+.occ-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--panel);
+  max-height: 58vh;
+  overflow-y: auto;
+  min-height: 0;
+}
+.occ-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+.aq-line-muted {
+  color: #7d93ab;
+  font-size: 12px;
+}
 .store-fish-list {
   display: flex;
   flex-direction: column;
