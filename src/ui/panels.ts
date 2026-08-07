@@ -12,6 +12,7 @@ import { buyPrice, decorStock, equipmentStock, retailPrice, wholesalePrice } fro
 import { canEatFood, foodPortions, foodStockEntries, freshnessLeft } from '../sim/food'
 import { canStock, fishRetailStock, maxFitOnShelf, orderForecast, usedVolume, vegetationOf, ROOM_TEMP, shelfOfAquarium } from '../sim/aquarium'
 import { fishWellbeing } from '../sim/wellbeing'
+import { fishArt } from './fishArt'
 import { VERSION } from '../version'
 import { DAY_DURATION_SECONDS, formatGameDate } from '../timing'
 import type { AquariumState, DecorDef, DecorKind, EquipmentId, FishDiet, FishInstance, FishSpecies, FoodId, FurnitureId, GameState, RoomId, ShelfState, ShopState } from '../types'
@@ -1936,8 +1937,11 @@ const top = el('div', 'store-controls-top')
     head.append(dot, el('strong', 'store-name', species.name))
     const badges = el('div', 'store-badges')
     badges.append(el('span', 'badge', species.family), el('span', 'badge', species.region), demandBadge(factor))
+    const artWrap = el('div', 'store-fish-art-wrap')
+    artWrap.innerHTML = fishArt(species)
     storeFishDetail.append(
       head,
+      artWrap,
       el('div', 'store-latin', species.latin),
       badges,
       el('div', 'store-params', [

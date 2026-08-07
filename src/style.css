@@ -1000,6 +1000,17 @@ body {
   padding: 14px;
   background: var(--panel);
 }
+.store-fish-art-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+}
+.fish-art {
+  width: 100%;
+  max-width: 340px;
+  height: auto;
+  display: block;
+}
 .order-form {
   display: flex;
   flex-direction: column;
