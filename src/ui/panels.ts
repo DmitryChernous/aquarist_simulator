@@ -1286,6 +1286,7 @@ export function buildApp(actions: UIActions) {
       el('div', 'aq-line', rep.diseased ? 'Состояние: болеет' : 'Состояние: здоров'),
     )
     body.appendChild(el('div', 'list-title', 'Потребности'))
+    const needs = el('div', 'need-grid')
     for (const b of rep.bars) {
       const rowEl = el('div', 'need-row')
       const lbl = el('div', 'need-head')
@@ -1296,8 +1297,9 @@ export function buildApp(actions: UIActions) {
       fill.classList.add(b.status)
       barWrap.appendChild(fill)
       rowEl.append(lbl, barWrap)
-      body.appendChild(rowEl)
+      needs.appendChild(rowEl)
     }
+    body.appendChild(needs)
     const feed = el('button', 'btn', 'Покормить')
     feed.addEventListener('click', () => openFeedModal(s, aq.id, fish.id))
     body.appendChild(feed)
