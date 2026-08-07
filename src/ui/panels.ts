@@ -1158,24 +1158,31 @@ export function buildApp(actions: UIActions) {
     const listCol = el('div', 'occ-list')
     const detailCol = el('div', 'occ-detail')
 
-    // Правая колонка: подробности конкретного обитателя (или сводка, если пусто/не выбран).
-    function renderFishDetail(fish: FishInstance | null): void {
+    function clearActive(): void {
+      for (const x of listCol.querySelectorAll<HTMLElement>('.occ-item')) x.classList.remove('active')
+    }
+
+    // Правая колонка: сводка по обитателям.
+    function renderOverview(): void {
       detailCol.innerHTML = ''
-      if (!fish) {
-        if (aq.fish.length === 0) {
-          detailCol.append(el('div', 'list-title', 'Общее состояние'), el('div', 'empty', 'Нет обитателей — заселите рыбу со склада в левой колонке.'))
-          return
-        }
+      if (aq.fish.length === 0) {
+        detailCol.append(el('div', 'list-title', 'Общее состояние'), el('div', 'empty', 'Нет обитателей — заселите рыбу со склада.'))
+      } else {
         const distinct = new Set(aq.fish.map((f) => f.speciesId))
         const avg = Math.round(aq.fish.reduce((acc, f) => acc + fishWellbeing(SPECIES_BY_ID[f.speciesId], f, aq).wellbeing, 0) / aq.fish.length)
         detailCol.append(
           el('div', 'list-title', 'Обитатели'),
           el('div', 'well-total', `${aq.fish.length} ос. · ${distinct.size} вид.`),
           el('div', 'aq-line', `Среднее самочувствие: ${avg}/100`),
-          el('div', 'aq-line-muted', 'Нажмите на обитателя слева, чтобы увидеть его состояние и потребности.'),
+          el('div', 'aq-line-muted', 'Нажмите на обитателя в списке, чтобы увидеть его состояние и потребности.'),
         )
-        return
       }
+      renderStock(detailCol)
+    }
+
+    // Правая колонка: подробности конкретного обитателя.
+    function renderFishDetail(fish: FishInstance): void {
+      detailCol.innerHTML = ''
       const species = SPECIES_BY_ID[fish.speciesId]
       const rep = fishWellbeing(species, fish, aq)
       detailCol.append(el('div', 'list-title', 'Самочувствие'), el('div', 'well-total', `${Math.round(rep.wellbeing)}/100`))
@@ -1205,37 +1212,106 @@ export function buildApp(actions: UIActions) {
       }
       detailCol.appendChild(needs)
       const acts = el('div', 'occ-actions')
+      const back = el('button', 'btn', '← К списку')
+      back.addEventListener('click', () => {
+        clearActive()
+        const ov = listCol.querySelector<HTMLElement>('.occ-overview')
+        if (ov) ov.classList.add('active')
+        renderOverview()
+      })
       const feed = el('button', 'btn', 'Покормить')
       feed.addEventListener('click', () => openFeedModal(s, aq.id, fish.id))
       const toStorage = el('button', 'btn danger', 'В склад')
       toStorage.addEventListener('click', () => {
         actions.onMoveToStorage(aq.id, fish.id)
         renderList()
-        renderFishDetail(null)
+        renderOverview()
       })
-      acts.append(feed, toStorage)
+      acts.append(back, feed, toStorage)
       detailCol.appendChild(acts)
     }
 
-    // Левая колонка: список обитателей.
+    function renderStock(target: HTMLElement): void {
+      const sec = el('div', 'occ-stock')
+      const head = el('div', 'list-title', 'Заселить со склада')
+      const feedAll = el('button', 'btn small', 'Кормить всех')
+      feedAll.disabled = aq.fish.length === 0
+      feedAll.addEventListener('click', () => openFeedModal(s, aq.id, null))
+      head.append(feedAll)
+      sec.append(head)
+      const goStore = el('button', 'btn buy', 'Купить рыб в магазине →')
+      goStore.addEventListener('click', () => {
+        close()
+        switchTab(app, 'store')
+        setStoreMode('sale')
+        setStoreSection('fish')
+      })
+      sec.append(goStore)
+      const stockById = new Map<string, number>()
+      for (const item of s.storage.stock) stockById.set(item.speciesId, (stockById.get(item.speciesId) ?? 0) + item.count)
+      if (stockById.size === 0) sec.append(el('div', 'empty', 'Склад пуст — закупите обитателей во вкладке «Магазин».'))
+      for (const [speciesId, count] of stockById) {
+        const species = SPECIES_BY_ID[speciesId]
+        const room = canStock(aq, species, 1)
+        const row = el('div', 'stock-row')
+        const dot = el('span', 'dot')
+        dot.style.background = species.color
+        const inp = el('input') as HTMLInputElement
+        inp.type = 'number'
+        inp.min = '1'
+        inp.max = String(Math.max(1, Math.min(count, room)))
+        inp.value = '1'
+        inp.className = 'count-input'
+        const btn = el('button', 'btn small', 'Заселить')
+        btn.disabled = room <= 0
+        btn.addEventListener('click', () => {
+          const n = Math.max(1, Math.min(count, room, Number(inp.value) || 1))
+          actions.onStockToAquarium(speciesId, aq.id, n)
+          renderStock(target)
+        })
+        row.append(dot, el('span', 'stock-name', `${species.name} (склад ${count} · до ${room})`), inp, btn)
+        sec.append(row)
+      }
+      target.appendChild(sec)
+    }
+
+    // Левая колонка: выбор обитателя (или сводка).
     function renderList(): void {
       listCol.innerHTML = ''
+      const overviewItem = el('button', 'occ-item occ-overview')
+      overviewItem.type = 'button'
+      overviewItem.append(el('span', 'fish-name', 'Обзор'))
+      overviewItem.addEventListener('click', () => {
+        clearActive()
+        overviewItem.classList.add('active')
+        renderOverview()
+      })
+      listCol.append(overviewItem)
       if (aq.fish.length === 0) {
-        listCol.append(el('div', 'empty', 'Аквариум пуст.'))
+        overviewItem.classList.add('active')
         return
       }
+      let idx = 0
       for (const fish of aq.fish) {
+        idx++
         const species = SPECIES_BY_ID[fish.speciesId]
         const item = el('button', 'occ-item')
         item.type = 'button'
+        item.dataset.occIdx = String(idx - 1)
         const fill = el('span', 'health-fill')
         fill.style.width = `${fish.health}%`
         fill.classList.add(fish.health > 60 ? 'ok' : fish.health > 30 ? 'warn' : 'dead')
-        const name = el('span', 'fish-name', `${species.name} `)
+        const name = el('span', 'fish-name', `${idx}. ${species.name} `)
         name.append(fill)
         item.append(name, el('span', 'health-num', `${Math.round(fish.health)}%`))
         item.addEventListener('click', () => {
-          for (const x of listCol.querySelectorAll<HTMLElement>('.occ-item')) x.classList.remove('active')
+          if (item.classList.contains('active')) {
+            clearActive()
+            overviewItem.classList.add('active')
+            renderOverview()
+            return
+          }
+          clearActive()
           item.classList.add('active')
           renderFishDetail(fish)
         })
@@ -1243,52 +1319,11 @@ export function buildApp(actions: UIActions) {
       }
     }
 
-    // Секция «заселить со склада» — в левой колонке.
-    const stockSection = el('div', 'occ-stock')
-    const stockHead = el('div', 'list-title', 'Заселить со склада')
-    const goStore = el('button', 'btn buy', 'Купить рыб в магазине →')
-    goStore.addEventListener('click', () => {
-      close()
-      switchTab(app, 'store')
-      setStoreMode('sale')
-      setStoreSection('fish')
-    })
-    const feedAll = el('button', 'btn small', 'Кормить всех')
-    feedAll.disabled = aq.fish.length === 0
-    feedAll.addEventListener('click', () => openFeedModal(s, aq.id, null))
-    stockHead.append(feedAll)
-    stockSection.append(stockHead, goStore)
-    const stockById = new Map<string, number>()
-    for (const item of s.storage.stock) stockById.set(item.speciesId, (stockById.get(item.speciesId) ?? 0) + item.count)
-    if (stockById.size === 0) stockSection.append(el('div', 'empty', 'Склад пуст — закупите обитателей во вкладке «Магазин».'))
-    for (const [speciesId, count] of stockById) {
-      const species = SPECIES_BY_ID[speciesId]
-      const room = canStock(aq, species, 1)
-      const row = el('div', 'stock-row')
-      const dot = el('span', 'dot')
-      dot.style.background = species.color
-      const inp = el('input') as HTMLInputElement
-      inp.type = 'number'
-      inp.min = '1'
-      inp.max = String(Math.max(1, Math.min(count, room)))
-      inp.value = '1'
-      inp.className = 'count-input'
-      const btn = el('button', 'btn small', 'Заселить')
-      btn.disabled = room <= 0
-      btn.addEventListener('click', () => {
-        const n = Math.max(1, Math.min(count, room, Number(inp.value) || 1))
-        actions.onStockToAquarium(speciesId, aq.id, n)
-        renderList()
-      })
-      row.append(dot, el('span', 'stock-name', `${species.name} (склад ${count} · до ${room})`), inp, btn)
-      stockSection.append(row)
-    }
-
-    layout.append(stockSection, listCol, detailCol)
+    layout.append(listCol, detailCol)
     body.append(layout)
 
     renderList()
-    renderFishDetail(null)
+    renderOverview()
   }
 
   function openFeedModal(s: GameState, aqId: string, fishId: string | null): void {
