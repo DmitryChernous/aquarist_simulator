@@ -1215,8 +1215,6 @@ export function buildApp(actions: UIActions) {
       const back = el('button', 'btn', '← К списку')
       back.addEventListener('click', () => {
         clearActive()
-        const ov = listCol.querySelector<HTMLElement>('.occ-overview')
-        if (ov) ov.classList.add('active')
         renderOverview()
       })
       const feed = el('button', 'btn', 'Покормить')
@@ -1275,20 +1273,11 @@ export function buildApp(actions: UIActions) {
       target.appendChild(sec)
     }
 
-    // Левая колонка: выбор обитателя (или сводка).
+    // Левая колонка: список обитателей.
     function renderList(): void {
       listCol.innerHTML = ''
-      const overviewItem = el('button', 'occ-item occ-overview')
-      overviewItem.type = 'button'
-      overviewItem.append(el('span', 'fish-name', 'Обзор'))
-      overviewItem.addEventListener('click', () => {
-        clearActive()
-        overviewItem.classList.add('active')
-        renderOverview()
-      })
-      listCol.append(overviewItem)
       if (aq.fish.length === 0) {
-        overviewItem.classList.add('active')
+        listCol.append(el('div', 'empty', 'Аквариум пуст.'))
         return
       }
       let idx = 0
@@ -1307,7 +1296,6 @@ export function buildApp(actions: UIActions) {
         item.addEventListener('click', () => {
           if (item.classList.contains('active')) {
             clearActive()
-            overviewItem.classList.add('active')
             renderOverview()
             return
           }

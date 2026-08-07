@@ -934,14 +934,15 @@ body {
 .occ-detail {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 14px;
+  padding: 12px;
   background: var(--panel);
   max-height: 58vh;
   overflow-y: auto;
   min-height: 0;
+  align-self: stretch;
 }
 .occ-actions {
   display: flex;
@@ -1655,31 +1656,31 @@ body {
 }
 
 .well-total {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 800;
   color: var(--ok);
-  margin-bottom: 6px;
+  line-height: 1.1;
 }
 .well-line {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .need-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 6px 8px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 4px 8px;
   align-items: start;
 }
 .need-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   background: var(--panel-2);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 6px;
+  padding: 5px 8px;
   margin-bottom: 0;
 }
 .need-head {
@@ -1687,7 +1688,7 @@ body {
   justify-content: space-between;
   gap: 8px;
   font-size: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 .need-label {
   font-weight: 600;
